@@ -1,0 +1,6 @@
+node_modules/
+dist/
+*.resolved.csv
+*.errors.csv
+*.results.csv
+.DS_Store
