@@ -1,5 +1,19 @@
 import { describe, it, expect } from "vitest";
-import { parseOrgDisplay } from "../src/auth";
+import { parseOrgDisplay, isValidAlias } from "../src/auth";
+
+describe("isValidAlias", () => {
+  it("정상 별칭/username 허용", () => {
+    expect(isValidAlias("dev")).toBe(true);
+    expect(isValidAlias("my-sandbox.01")).toBe(true);
+    expect(isValidAlias("user@example.com")).toBe(true);
+  });
+  it("셸 메타문자 포함 별칭 거부(명령 인젝션 방지)", () => {
+    expect(isValidAlias("dev && rm -rf ~")).toBe(false);
+    expect(isValidAlias("dev`curl evil`")).toBe(false);
+    expect(isValidAlias("dev; echo x")).toBe(false);
+    expect(isValidAlias("dev|cat")).toBe(false);
+  });
+});
 
 describe("parseOrgDisplay", () => {
   it("accessToken·instanceUrl 추출", () => {

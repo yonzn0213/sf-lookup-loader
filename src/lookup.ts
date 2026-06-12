@@ -7,7 +7,14 @@ export function chunk<T>(arr: T[], size: number): T[][] {
 }
 
 export function soqlEscape(v: string): string {
-  return v.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+  return v
+    .replace(/\\/g, "\\\\")
+    .replace(/'/g, "\\'")
+    .replace(/\n/g, "\\n")
+    .replace(/\r/g, "\\r")
+    .replace(/\t/g, "\\t")
+    .replace(/\f/g, "\\f")
+    .replace(/[\b]/g, "\\b");
 }
 
 export function buildIdMap(records: Array<Record<string, any>>, keyField: string): IdMap {
@@ -33,6 +40,7 @@ export function resolveRow(
   const errors: RowError[] = [];
   for (const lk of lookups) {
     const key = row[lk.src] ?? "";
+    if (key === "") continue; // 빈 lookup 값은 관계 없음으로 간주 — 에러 아님, 필드 미설정
     const idm = idMaps[lk.field];
     if (idm.duplicates.has(key)) {
       errors.push({ row: rowNum, field: lk.field, key, reason: "중복 key" });

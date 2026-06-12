@@ -11,6 +11,9 @@ describe("soqlEscape", () => {
   it("작은따옴표·백슬래시 이스케이프", () => {
     expect(soqlEscape("a'b\\c")).toBe("a\\'b\\\\c");
   });
+  it("개행·탭 등 제어문자 이스케이프", () => {
+    expect(soqlEscape("a\nb\tc")).toBe("a\\nb\\tc");
+  });
 });
 
 describe("buildIdMap", () => {
@@ -45,6 +48,11 @@ describe("resolveRow", () => {
     const dup = { AccountId: { map: new Map(), duplicates: new Set(["D"]) } };
     const r = resolveRow({ "거래처키": "D" }, lookups, dup, "blank", 4);
     expect(r.errors[0].reason).toBe("중복 key");
+  });
+  it("빈 lookup 값은 스킵(에러 아님, 필드 미설정)", () => {
+    const r = resolveRow({ "거래처키": "" }, lookups, idMaps, "error", 5);
+    expect(r.fields).toEqual({});
+    expect(r.errors).toEqual([]);
   });
 });
 
