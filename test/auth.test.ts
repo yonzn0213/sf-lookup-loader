@@ -2,10 +2,11 @@ import { describe, it, expect } from "vitest";
 import { parseOrgDisplay, isValidAlias } from "../src/auth";
 
 describe("isValidAlias", () => {
-  it("정상 별칭/username 허용", () => {
+  it("정상 별칭/username 허용 (공백 포함 별칭도 OK)", () => {
     expect(isValidAlias("dev")).toBe(true);
     expect(isValidAlias("my-sandbox.01")).toBe(true);
     expect(isValidAlias("user@example.com")).toBe(true);
+    expect(isValidAlias("YG1 Partial")).toBe(true);
   });
   it("셸 메타문자 포함 별칭 거부(명령 인젝션 방지)", () => {
     expect(isValidAlias("dev && rm -rf ~")).toBe(false);

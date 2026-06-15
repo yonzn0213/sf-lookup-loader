@@ -1,14 +1,14 @@
-import { execFile } from "node:child_process";
+import { exec } from "node:child_process";
 import { promisify } from "node:util";
 import { Connection } from "jsforce";
 
-const pexec = promisify(execFile);
+const pexec = promisify(exec);
 
-// org 별칭/username만 허용(셸 메타문자 차단). 명령 인젝션 방지의 1차 방어선.
-const ALIAS_RE = /^[A-Za-z0-9._@-]+$/;
+// 셸 메타문자/제어문자만 차단(명령 인젝션 방지). 공백은 허용 — SF 별칭에 공백이 들어갈 수 있음(예: "YG1 Partial").
+const DANGEROUS_IN_ALIAS = /["'`$;&|<>(){}\[\]!*?~\\\n\r\t]/;
 
 export function isValidAlias(alias: string): boolean {
-  return ALIAS_RE.test(alias);
+  return alias.length > 0 && !DANGEROUS_IN_ALIAS.test(alias);
 }
 
 export function parseOrgDisplay(stdout: string): { accessToken: string; instanceUrl: string } {
@@ -22,12 +22,13 @@ export function parseOrgDisplay(stdout: string): { accessToken: string; instance
 
 export async function getConnection(alias: string): Promise<Connection> {
   if (!isValidAlias(alias))
-    throw new Error(`잘못된 org 별칭: '${alias}'. 영문/숫자/._@- 만 허용됩니다.`);
+    throw new Error(`잘못된 org 별칭: '${alias}'. 셸 특수문자는 쓸 수 없습니다.`);
   let stdout: string;
   try {
-    ({ stdout } = await pexec("sf", ["org", "display", "--target-org", alias, "--json"], { shell: true }));
+    // 별칭은 검증을 통과한 안전한 값이며, 공백 대응을 위해 큰따옴표로 감싼다.
+    ({ stdout } = await pexec(`sf org display --target-org "${alias}" --json`));
   } catch {
-    throw new Error(`sf CLI 실행 실패: '${alias}' 별칭이 로그인돼 있는지(\`sf org list\`) 확인하세요.`);
+    throw new Error(`sf CLI 실행 실패: '${alias}'가 로그인돼 있는지(\`sf org list\`) 확인하세요.`);
   }
   const { accessToken, instanceUrl } = parseOrgDisplay(stdout);
   return new Connection({ accessToken, instanceUrl });
