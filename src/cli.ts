@@ -6,7 +6,7 @@ import { loadJob } from "./config.js";
 import { getConnection } from "./auth.js";
 import { prepare } from "./prepare.js";
 import { load } from "./load.js";
-import { describeFields, suggestMappings } from "./describe.js";
+import { runWizard } from "./wizard.js";
 
 const program = new Command();
 program.name("sfload").description("Salesforce 데이터 삽입 마이그레이션 CLI (헤더 매핑 · lookup Id 자동 치환 · 검증)");
@@ -14,7 +14,7 @@ program.name("sfload").description("Salesforce 데이터 삽입 마이그레이�
 program.addHelpText("after", `
 사용 흐름:
   $ sf org login web --alias dev                  # 1) org 로그인 (최초 1회)
-  $ sfload init -o Account --org dev -i data.csv  # 2) 매핑 설정(job.json) 뼈대 생성
+  $ sfload init --org dev -i data.csv             # 2) 대화형 마법사로 매핑 설정(job.json) 생성
   $ sfload prepare -c job.json -i data.csv        # 3) 매핑+lookup 치환 (적재 X, 안전)
   $ sfload load -c job.json -i data.resolved.csv  # 4) Bulk 적재
   $ sfload run -c job.json -i data.csv            # (3+4 한 번에)
@@ -22,22 +22,20 @@ program.addHelpText("after", `
 자세한 단계별 안내는 저장소의 USAGE.md 를 참고하세요.`);
 
 program.command("init")
-  .description("org 필드를 읽어 매핑 설정(job.json) 뼈대를 생성")
-  .requiredOption("-o, --object <name>", "대상 SObject API명 (예: Account)")
+  .description("대화형 마법사로 매핑 설정(job.json) 생성 + dry-run 검증")
   .requiredOption("--org <alias>", "sf CLI 별칭 또는 username")
-  .option("-i, --input <csv>", "헤더 자동 제안용 샘플 CSV")
+  .requiredOption("-i, --input <csv>", "매핑할 마이그레이션 CSV(헤더 사용)")
   .option("--out <path>", "출력 job 파일 경로", "job.json")
   .action(async (opts) => {
     const conn = await getConnection(opts.org);
-    const fields = await describeFields(conn, opts.object);
-    let mappings: Record<string, string> = {};
-    if (opts.input) {
-      const header = await firstHeader(opts.input);
-      mappings = suggestMappings(header, fields);
-    }
-    const job = { object: opts.object, targetOrg: opts.org, operation: "insert", mappings, onLookupMiss: "error" };
+    const headers = await firstHeader(opts.input);
+    if (headers.length === 0) throw new Error("CSV 헤더를 읽지 못했습니다.");
+    const job = await runWizard(conn, headers, opts.org);
     writeFileSync(opts.out, JSON.stringify(job, null, 2) + "\n", "utf8");
-    console.log(`job 파일 생성: ${opts.out} (필드 ${fields.length}개 기준)`);
+    console.log(`\n✅ ${opts.out} 생성. dry-run으로 매핑을 검증합니다...\n`);
+    const r = await prepare(conn, job, opts.input);
+    console.log(`dry-run 결과: 변환 ${r.resolvedCount} / 미매칭 ${r.errorCount} (상세: ${r.errorsPath})`);
+    console.log("문제 없으면 'load'로 적재하세요. (적재 전까지 org에 쓰기 없음)");
   });
 
 program.command("prepare")

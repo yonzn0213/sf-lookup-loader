@@ -61,8 +61,8 @@ npm install && npm run build
 # Salesforce CLI에 org 로그인 (별칭 부여)
 sf org login web --alias dev
 
-# 1) 매핑 설정 뼈대 생성 (org 필드로 헤더 자동 제안)
-node dist/cli.js init -o Contact --org dev -i data.csv
+# 1) 대화형 마법사로 매핑 설정 생성 (객체는 대화형 선택)
+node dist/cli.js init --org dev -i data.csv
 
 # 2) 헤더 매핑 + lookup Id 치환 (적재 안 함, 안전)
 node dist/cli.js prepare -c job.json -i data.csv     # → data.resolved.csv + data.errors.csv
