@@ -105,6 +105,34 @@ node dist/cli.js run -c job.json -i data.csv
 
 ---
 
+## 🧪 실전 예시 — lookup으로 관계(Id) 자동 채우기
+
+**상황**: `A` 객체에 `Test__c` 객체를 가리키는 lookup 필드 `Test__c`가 있고, `Test__c` 객체에는 고유 키 `KEY__c`가 있다. 마이그레이션 CSV에는 A의 필드들과 함께 **`Test OBJECT KEY`** 컬럼(연결할 Test 레코드의 `KEY__c` 값)이 들어 있다.
+
+**원하는 것**: `Test OBJECT KEY` 값으로 Test 객체에서 `KEY__c`가 일치하는 레코드의 Id를 찾아 A의 lookup 필드 `Test__c`에 넣기.
+
+```jsonc
+{
+  "object": "A",
+  "targetOrg": "YG1 Partial",
+  "operation": "insert",
+  "mappings": {
+    "이름": "Name",                                          // A의 일반 필드
+    "Test OBJECT KEY": {                                     // CSV 컬럼명
+      "field": "Test__c",                                    // → A의 lookup 필드(여기에 Id가 채워짐)
+      "lookup": { "object": "Test__c", "key": "KEY__c" }     // 대상 객체 / 비교할 키 필드
+    }
+  }
+}
+```
+
+**처리 흐름**:
+`prepare` → `SELECT Id, KEY__c FROM Test__c WHERE KEY__c IN ( ...CSV의 'Test OBJECT KEY' 값들... )` 로 일괄 조회 → 값이 일치하는 Test 레코드의 **Id를 A의 `Test__c`에 자동 치환** → `data.resolved.csv` 생성(일치 안 되면 `data.errors.csv`). 이어서 `load`로 적재.
+
+> 즉 CSV에는 "내부 Id"가 아니라 사람이 아는 **업무 키(KEY__c 값)** 만 넣으면, 도구가 실제 Id를 찾아 관계를 연결해 줍니다.
+
+---
+
 ## 💡 기술적 의사결정
 
 1. **`prepare`/`load` 분리** — 적재는 되돌리기 어렵다. 치환 결과와 미매칭 리포트를 먼저 확인한 뒤 적재하도록 단계를 분리했다. `prepare`만 써서 깨끗한 CSV를 뽑아 기존 Data Loader로 올리는 사용법도 1급 지원.
