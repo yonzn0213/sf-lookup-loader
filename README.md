@@ -13,6 +13,7 @@
 - **대용량 스트리밍**: `prepare`는 입력을 **2-pass 스트리밍**으로 처리해 행을 메모리에 쌓지 않음 — 메모리가 *행 수가 아니라 고유 key 수*에만 비례. 수십만 행도 무렉.
 - **안전한 2단계**: `prepare`(매핑+치환, 적재 안 함)와 `load`(Bulk 적재)를 분리 — 적재 전에 결과·에러를 확인.
 - **검증 리포트**: 미매칭/중복 key를 `errors.csv`로, 적재 결과(행별 성공/실패)를 `results.csv`로, 건수 대조를 콘솔로.
+- **대화형 `init` 마법사**: org 필드를 **목록에서 선택**해 매핑 설정을 만들고(오타·미존재 필드 선택 불가), lookup 대상 객체는 자동 확정. 끝나면 **자동 dry-run**으로 검증.
 - **인증 비저장**: Salesforce CLI(`sf`) 로그인 세션을 재사용 — 비밀번호/토큰을 도구에 저장하지 않음.
 
 ---
@@ -26,7 +27,7 @@
 | 인증 | `sf org display --json` 재사용 → jsforce Connection |
 | CSV | csv-parse (스트림 파싱) / csv-stringify |
 | CLI | commander |
-| 테스트 | Vitest (42 tests, TDD) |
+| 테스트 | Vitest (51 tests, TDD) |
 
 ---
 
@@ -148,7 +149,7 @@ node dist/cli.js run -c job.json -i data.csv
 ## ✅ 테스트
 
 ```bash
-npm test          # vitest 42 tests
+npm test          # vitest 51 tests
 npx tsc --noEmit  # 타입 체크 (strict)
 ```
 커버리지: 설정 검증(빈값 옵션 포함), 헤더 매핑, lookup 치환(매칭/미매칭/중복/빈값/공백·대소문자), 청크 조회, SOQL 이스케이프(인젝션·제어문자), 별칭 검증, CSV(중복 헤더 에러·trim), prepare 파이프라인(임시 CSV + mock), Bulk 옵션·결과 집계, 매핑 자동 제안.
@@ -158,7 +159,8 @@ npx tsc --noEmit  # 타입 체크 (strict)
 ## 📋 검증 결과 & 남은 사항
 
 ### 검증 (완료)
-- ✅ vitest **42개 전부 통과**, `tsc --noEmit` 무에러, `node dist/cli.js --help` 정상 구동.
+- ✅ vitest **51개 전부 통과**, `tsc --noEmit` 무에러, `node dist/cli.js --help` 정상 구동.
+- ✅ **대화형 `init` 마법사** — org 메타데이터 기반 목록 선택·검증, lookup 대상 자동 확정, 저장 후 자동 dry-run.
 - ✅ 런타임(prod) 의존성 취약점 0건 (`npm audit --omit=dev`).
 - ✅ **실제 sandbox 종단 테스트 통과** — Account 부모/자식 생성 시 lookup key→ParentId 자동 치환·관계 형성 확인 후 테스트 레코드 정리(생성한 것만 삭제).
 - ✅ 코드 리뷰 후 보안/정확성 수정: 별칭 명령 인젝션 차단, SOQL 제어문자 이스케이프, 빈 lookup 값 스킵.
