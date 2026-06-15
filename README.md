@@ -10,6 +10,7 @@
 
 - **헤더 매핑**: 소스 헤더(예: `이름`)를 SF API 필드(`LastName`)로 자동 변환. 설정 파일로 재사용.
 - **lookup Id 자동 치환**: lookup 필드에 비즈니스 key를 주면, org에서 `SELECT Id ... WHERE key IN (...)`로 **일괄 조회**해 실제 레코드 Id로 치환. 엑셀 VLOOKUP 수작업 제거. key는 **앞뒤 공백·대소문자를 무시**하고 매칭(중간 공백은 보존).
+- **대용량 스트리밍**: `prepare`는 입력을 **2-pass 스트리밍**으로 처리해 행을 메모리에 쌓지 않음 — 메모리가 *행 수가 아니라 고유 key 수*에만 비례. 수십만 행도 무렉.
 - **안전한 2단계**: `prepare`(매핑+치환, 적재 안 함)와 `load`(Bulk 적재)를 분리 — 적재 전에 결과·에러를 확인.
 - **검증 리포트**: 미매칭/중복 key를 `errors.csv`로, 적재 결과(행별 성공/실패)를 `results.csv`로, 건수 대조를 콘솔로.
 - **인증 비저장**: Salesforce CLI(`sf`) 로그인 세션을 재사용 — 비밀번호/토큰을 도구에 저장하지 않음.
@@ -25,7 +26,7 @@
 | 인증 | `sf org display --json` 재사용 → jsforce Connection |
 | CSV | csv-parse (스트림 파싱) / csv-stringify |
 | CLI | commander |
-| 테스트 | Vitest (41 tests, TDD) |
+| 테스트 | Vitest (42 tests, TDD) |
 
 ---
 
@@ -117,7 +118,7 @@ node dist/cli.js run -c job.json -i data.csv
 ## ✅ 테스트
 
 ```bash
-npm test          # vitest 41 tests
+npm test          # vitest 42 tests
 npx tsc --noEmit  # 타입 체크 (strict)
 ```
 커버리지: 설정 검증(빈값 옵션 포함), 헤더 매핑, lookup 치환(매칭/미매칭/중복/빈값/공백·대소문자), 청크 조회, SOQL 이스케이프(인젝션·제어문자), 별칭 검증, CSV(중복 헤더 에러·trim), prepare 파이프라인(임시 CSV + mock), Bulk 옵션·결과 집계, 매핑 자동 제안.
@@ -127,14 +128,16 @@ npx tsc --noEmit  # 타입 체크 (strict)
 ## 📋 검증 결과 & 남은 사항
 
 ### 검증 (완료)
-- ✅ vitest **41개 전부 통과**, `tsc --noEmit` 무에러, `node dist/cli.js --help` 정상 구동.
+- ✅ vitest **42개 전부 통과**, `tsc --noEmit` 무에러, `node dist/cli.js --help` 정상 구동.
 - ✅ 런타임(prod) 의존성 취약점 0건 (`npm audit --omit=dev`).
-- ✅ 코드 리뷰 후 보안/정확성 수정 완료: 별칭 명령 인젝션 차단, SOQL 제어문자 이스케이프, 빈 lookup 값 스킵.
-- ✅ 추가 반영: `skipEmptyFields` 옵션, **중복 헤더 에러**, lookup key **앞뒤 공백·대소문자 정규화**.
+- ✅ **실제 sandbox 종단 테스트 통과** — Account 부모/자식 생성 시 lookup key→ParentId 자동 치환·관계 형성 확인 후 테스트 레코드 정리(생성한 것만 삭제).
+- ✅ 코드 리뷰 후 보안/정확성 수정: 별칭 명령 인젝션 차단, SOQL 제어문자 이스케이프, 빈 lookup 값 스킵.
+- ✅ 추가 반영: `skipEmptyFields` 옵션, **중복 헤더 에러**, lookup key **앞뒤 공백·대소문자 정규화**, **공백 포함 org 별칭 지원**.
+- ✅ **prepare 2-pass 스트리밍** — 입력 행을 메모리에 쌓지 않음(메모리 = 고유 key 수에 비례).
 
 ### 남은 사항
-1. **실제 org 종단 테스트** — sandbox 별칭으로 `init → prepare → load`(+upsert) 소량 데이터 검증. 실제 레코드를 쓰는 작업이라 org 별칭과 진행 동의가 필요합니다.
-2. **대용량(수십만 행+) 처리** — 현재 입력 전체를 메모리에 적재합니다. 더 큰 파일을 위해 **2-pass 스트리밍**(① 키만 스트리밍 수집 → 조회 → ② 행 스트리밍 변환·기록)으로 확장하는 방안을 검토 중입니다.
+1. **load 단계 스트리밍** — `prepare`는 스트리밍이지만 `load`는 `resolved.csv`를 메모리로 읽어 Bulk2에 넘깁니다. 초대용량에선 `resolved.csv`를 스트림으로 Bulk2에 투입하도록 개선 여지(실 org 적재 재검증 필요).
+2. **prepare 단일 패스(윈도우) 최적화** — 현재 2-pass는 파일을 두 번 읽습니다. 파일을 한 번만 읽는 윈도우 방식은 추후 최적화 후보(현재도 메모리 목표는 달성).
 
 ---
 

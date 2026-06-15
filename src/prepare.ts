@@ -1,40 +1,70 @@
+import { createWriteStream } from "node:fs";
+import { finished } from "node:stream/promises";
+import { stringify } from "csv-stringify";
 import type { Connection } from "jsforce";
-import type { Job, IdMap, RowError } from "./types.js";
+import type { Job, IdMap } from "./types.js";
 import { parseMappings, applySimple } from "./mapping.js";
 import { queryKeys, buildIdMap, resolveRow } from "./lookup.js";
-import { writeRows, writeErrors, summarize } from "./report.js";
-import { readCsv } from "./csv.js";
+import { summarize } from "./report.js";
+import { streamCsvRows } from "./csv.js";
 
+// 2-pass 스트리밍: 입력 행을 메모리에 쌓지 않는다.
+//  1패스 — lookup key만 수집 → org 일괄 조회로 key→Id 맵 구성
+//  2패스 — 행을 다시 스트리밍하며 변환, 결과/에러를 스트리밍 기록
+// 메모리는 "행 수"가 아니라 "고유 key 수"에만 비례한다.
 export async function prepare(conn: Connection, job: Job, inputPath: string): Promise<{
   resolvedPath: string; errorsPath: string; resolvedCount: number; errorCount: number;
 }> {
   const { simple, lookups } = parseMappings(job.mappings);
-  const rows = await readCsv(inputPath);
 
+  // ── 1패스: 고유 key 수집 ──
+  const keySets: Record<string, Set<string>> = {};
+  for (const lk of lookups) keySets[lk.field] = new Set();
+  for await (const row of streamCsvRows(inputPath)) {
+    for (const lk of lookups) {
+      const v = (row[lk.src] ?? "").trim();
+      if (v) keySets[lk.field].add(v);
+    }
+  }
+
+  // ── 조회: key→Id 맵 ──
   const idMaps: Record<string, IdMap> = {};
   for (const lk of lookups) {
-    const keys = rows.map((r) => r[lk.src]).filter((v): v is string => !!v);
-    const recs = await queryKeys(conn as any, lk.object, lk.key, keys);
+    const recs = await queryKeys(conn as any, lk.object, lk.key, [...keySets[lk.field]]);
     idMaps[lk.field] = buildIdMap(recs, lk.key);
   }
 
-  const headers = [...Object.values(simple), ...lookups.map((l) => l.field)];
-  const outRows: Record<string, string>[] = [];
-  const errors: RowError[] = [];
-
-  rows.forEach((row, i) => {
-    const rowNum = i + 2;
-    const base = applySimple(row, simple, job.skipEmptyFields);
-    const { fields, errors: rowErrors } = resolveRow(row, lookups, idMaps, job.onLookupMiss, rowNum);
-    errors.push(...rowErrors);
-    if (job.onLookupMiss === "error" && rowErrors.length > 0) return;
-    outRows.push({ ...base, ...fields });
-  });
-
+  // ── 출력 스트림 준비 ──
   const resolvedPath = inputPath.replace(/\.csv$/i, "") + ".resolved.csv";
   const errorsPath = inputPath.replace(/\.csv$/i, "") + ".errors.csv";
-  writeRows(resolvedPath, outRows, headers);
-  writeErrors(errorsPath, errors);
-  summarize("prepare", { 입력: rows.length, 변환: outRows.length, 에러: errors.length });
-  return { resolvedPath, errorsPath, resolvedCount: outRows.length, errorCount: errors.length };
+  const headers = [...Object.values(simple), ...lookups.map((l) => l.field)];
+
+  const resolvedOut = createWriteStream(resolvedPath);
+  const resolvedCsv = stringify({ header: true, columns: headers });
+  resolvedCsv.pipe(resolvedOut);
+
+  const errorsOut = createWriteStream(errorsPath);
+  const errorsCsv = stringify({ header: true, columns: ["row", "field", "key", "reason"] });
+  errorsCsv.pipe(errorsOut);
+
+  // ── 2패스: 스트리밍 변환·기록 ──
+  let resolvedCount = 0;
+  let errorCount = 0;
+  let rowNum = 1; // 헤더가 1행
+  for await (const row of streamCsvRows(inputPath)) {
+    rowNum++;
+    const base = applySimple(row, simple, job.skipEmptyFields);
+    const { fields, errors } = resolveRow(row, lookups, idMaps, job.onLookupMiss, rowNum);
+    for (const e of errors) { errorsCsv.write(e); errorCount++; }
+    if (job.onLookupMiss === "error" && errors.length > 0) continue;
+    resolvedCsv.write({ ...base, ...fields });
+    resolvedCount++;
+  }
+
+  resolvedCsv.end();
+  errorsCsv.end();
+  await Promise.all([finished(resolvedOut), finished(errorsOut)]);
+
+  summarize("prepare", { 입력: rowNum - 1, 변환: resolvedCount, 에러: errorCount });
+  return { resolvedPath, errorsPath, resolvedCount, errorCount };
 }
