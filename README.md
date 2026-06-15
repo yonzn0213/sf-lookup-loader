@@ -53,6 +53,8 @@ job.json(매핑·operation) + data.csv
 
 ## 🚀 시작하기
 
+> 📖 **처음 쓰신다면 [단계별 사용 가이드 USAGE.md](USAGE.md)** 를 보세요 — 준비부터 에러 고치는 법까지 안내합니다.
+
 ```bash
 npm install && npm run build
 
