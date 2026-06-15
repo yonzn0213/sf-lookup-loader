@@ -17,11 +17,16 @@ export function soqlEscape(v: string): string {
     .replace(/[\b]/g, "\\b");
 }
 
+// lookup key 매칭용 정규화: 앞뒤 공백 무시 + 대소문자 무시 (중간 공백은 보존)
+export function normalizeKey(v: string): string {
+  return v.trim().toLowerCase();
+}
+
 export function buildIdMap(records: Array<Record<string, any>>, keyField: string): IdMap {
   const map = new Map<string, string>();
   const duplicates = new Set<string>();
   for (const rec of records) {
-    const k = String(rec[keyField]);
+    const k = normalizeKey(String(rec[keyField] ?? ""));
     if (map.has(k)) duplicates.add(k);
     else map.set(k, rec.Id);
   }
@@ -39,18 +44,19 @@ export function resolveRow(
   const fields: Record<string, string> = {};
   const errors: RowError[] = [];
   for (const lk of lookups) {
-    const key = row[lk.src] ?? "";
-    if (key === "") continue; // 빈 lookup 값은 관계 없음으로 간주 — 에러 아님, 필드 미설정
+    const raw = (row[lk.src] ?? "").trim();
+    if (raw === "") continue; // 빈 lookup 값은 관계 없음으로 간주 — 에러 아님, 필드 미설정
+    const nkey = normalizeKey(raw);
     const idm = idMaps[lk.field];
-    if (idm.duplicates.has(key)) {
-      errors.push({ row: rowNum, field: lk.field, key, reason: "중복 key" });
+    if (idm.duplicates.has(nkey)) {
+      errors.push({ row: rowNum, field: lk.field, key: raw, reason: "중복 key" });
       continue;
     }
-    const id = idm.map.get(key);
+    const id = idm.map.get(nkey);
     if (id) {
       fields[lk.field] = id;
     } else {
-      errors.push({ row: rowNum, field: lk.field, key, reason: "미매칭" });
+      errors.push({ row: rowNum, field: lk.field, key: raw, reason: "미매칭" });
       if (onMiss === "blank") fields[lk.field] = "";
     }
   }
@@ -62,7 +68,9 @@ export async function queryKeys(
   object: string, keyField: string, keys: string[], chunkSize = 500,
 ): Promise<Array<Record<string, any>>> {
   const out: Array<Record<string, any>> = [];
-  for (const part of chunk([...new Set(keys)], chunkSize)) {
+  // 정규화 기준 중복 제거(앞뒤 공백·대소문자 무시). 조회는 trim된 대표값으로.
+  const uniq = [...new Map(keys.map((k) => [normalizeKey(k), k.trim()])).values()].filter((k) => k !== "");
+  for (const part of chunk(uniq, chunkSize)) {
     const inList = part.map((k) => `'${soqlEscape(k)}'`).join(",");
     const soql = `SELECT Id, ${keyField} FROM ${object} WHERE ${keyField} IN (${inList})`;
     const res = await conn.query(soql);

@@ -9,6 +9,7 @@ export interface Job {
   externalIdField?: string;
   mappings: Record<string, Mapping>;
   onLookupMiss: "error" | "blank";
+  skipEmptyFields?: boolean;   // true면 빈 셀(공백 포함)은 출력에서 제외 — update 시 기존 값 null 덮어쓰기 방지
 }
 export interface ParsedMappings {
   simple: Record<string, string>;

@@ -1,23 +1,15 @@
-import { createReadStream } from "node:fs";
-import { parse } from "csv-parse";
 import type { Connection } from "jsforce";
 import type { Job, IdMap, RowError } from "./types.js";
 import { parseMappings, applySimple } from "./mapping.js";
 import { queryKeys, buildIdMap, resolveRow } from "./lookup.js";
 import { writeRows, writeErrors, summarize } from "./report.js";
-
-async function readRows(path: string): Promise<Record<string, string>[]> {
-  const rows: Record<string, string>[] = [];
-  const parser = createReadStream(path).pipe(parse({ columns: true, bom: true, trim: true }));
-  for await (const rec of parser) rows.push(rec as Record<string, string>);
-  return rows;
-}
+import { readCsv } from "./csv.js";
 
 export async function prepare(conn: Connection, job: Job, inputPath: string): Promise<{
   resolvedPath: string; errorsPath: string; resolvedCount: number; errorCount: number;
 }> {
   const { simple, lookups } = parseMappings(job.mappings);
-  const rows = await readRows(inputPath);
+  const rows = await readCsv(inputPath);
 
   const idMaps: Record<string, IdMap> = {};
   for (const lk of lookups) {
@@ -32,7 +24,7 @@ export async function prepare(conn: Connection, job: Job, inputPath: string): Pr
 
   rows.forEach((row, i) => {
     const rowNum = i + 2;
-    const base = applySimple(row, simple);
+    const base = applySimple(row, simple, job.skipEmptyFields);
     const { fields, errors: rowErrors } = resolveRow(row, lookups, idMaps, job.onLookupMiss, rowNum);
     errors.push(...rowErrors);
     if (job.onLookupMiss === "error" && rowErrors.length > 0) return;

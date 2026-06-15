@@ -1,5 +1,11 @@
 import { describe, it, expect, vi } from "vitest";
-import { chunk, soqlEscape, buildIdMap, resolveRow, queryKeys } from "../src/lookup";
+import { chunk, soqlEscape, buildIdMap, resolveRow, queryKeys, normalizeKey } from "../src/lookup";
+
+describe("normalizeKey", () => {
+  it("앞뒤 공백 제거 + 소문자, 중간 공백 보존", () => {
+    expect(normalizeKey("  AB cd  ")).toBe("ab cd");
+  });
+});
 
 describe("chunk", () => {
   it("크기대로 분할", () => {
@@ -23,15 +29,24 @@ describe("buildIdMap", () => {
     expect(r.map.get("a")).toBe("1");
     expect(r.duplicates.has("b")).toBe(true);
   });
+  it("대소문자·앞뒤공백 정규화로 중복 감지", () => {
+    const r = buildIdMap([{ Id: "1", K: "Abc" }, { Id: "2", K: " abc " }], "K");
+    expect(r.duplicates.has("abc")).toBe(true);
+  });
 });
 
 const lookups = [{ src: "거래처키", field: "AccountId", object: "Account", key: "External_Id__c" }];
 
 describe("resolveRow", () => {
-  const idMaps = { AccountId: { map: new Map([["K1", "001x"]]), duplicates: new Set<string>() } };
+  const idMaps = { AccountId: { map: new Map([["k1", "001x"]]), duplicates: new Set<string>() } };
 
   it("매칭되면 Id 치환", () => {
     const r = resolveRow({ "거래처키": "K1" }, lookups, idMaps, "error", 1);
+    expect(r.fields).toEqual({ AccountId: "001x" });
+    expect(r.errors).toEqual([]);
+  });
+  it("앞뒤 공백·대소문자 무시하고 매칭", () => {
+    const r = resolveRow({ "거래처키": "  k1  " }, lookups, idMaps, "error", 9);
     expect(r.fields).toEqual({ AccountId: "001x" });
     expect(r.errors).toEqual([]);
   });
@@ -45,7 +60,7 @@ describe("resolveRow", () => {
     expect(r.errors.length).toBe(1);
   });
   it("중복 key는 항상 에러", () => {
-    const dup = { AccountId: { map: new Map(), duplicates: new Set(["D"]) } };
+    const dup = { AccountId: { map: new Map(), duplicates: new Set(["d"]) } };
     const r = resolveRow({ "거래처키": "D" }, lookups, dup, "blank", 4);
     expect(r.errors[0].reason).toBe("중복 key");
   });

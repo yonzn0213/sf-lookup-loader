@@ -21,6 +21,10 @@ export function validateJob(raw: any): Job {
   if (onLookupMiss !== "error" && onLookupMiss !== "blank")
     throw new Error("onLookupMiss는 error 또는 blank여야 합니다.");
 
+  const skipEmptyFields = raw.skipEmptyFields ?? false;
+  if (typeof skipEmptyFields !== "boolean")
+    throw new Error("skipEmptyFields는 true 또는 false여야 합니다.");
+
   return {
     object: raw.object,
     targetOrg: raw.targetOrg,
@@ -28,6 +32,7 @@ export function validateJob(raw: any): Job {
     externalIdField: raw.externalIdField,
     mappings: raw.mappings,
     onLookupMiss,
+    skipEmptyFields,
   };
 }
 

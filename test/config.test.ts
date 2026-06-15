@@ -10,6 +10,13 @@ describe("validateJob", () => {
   it("정상 설정 통과", () => {
     expect(validateJob(base).object).toBe("Contact");
   });
+  it("skipEmptyFields 기본 false, 지정 시 반영", () => {
+    expect(validateJob(base).skipEmptyFields).toBe(false);
+    expect(validateJob({ ...base, skipEmptyFields: true }).skipEmptyFields).toBe(true);
+  });
+  it("skipEmptyFields 비불리언이면 throw", () => {
+    expect(() => validateJob({ ...base, skipEmptyFields: "yes" })).toThrow(/skipEmptyFields/);
+  });
   it("기본 onLookupMiss는 error", () => {
     const { onLookupMiss, ...noMiss } = base;
     expect(validateJob(noMiss).onLookupMiss).toBe("error");

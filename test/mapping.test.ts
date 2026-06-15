@@ -23,4 +23,13 @@ describe("applySimple", () => {
     expect(applySimple(row, { "이름": "LastName", "이메일": "Email" }))
       .toEqual({ LastName: "홍길동", Email: "a@b.com" });
   });
+  it("skipEmpty=true면 빈/공백 셀은 제외", () => {
+    const row = { "이름": "홍길동", "이메일": "   " };
+    expect(applySimple(row, { "이름": "LastName", "이메일": "Email" }, true))
+      .toEqual({ LastName: "홍길동" });
+  });
+  it("skipEmpty=false면 빈 셀도 그대로 포함", () => {
+    const row = { "이름": "" };
+    expect(applySimple(row, { "이름": "LastName" }, false)).toEqual({ LastName: "" });
+  });
 });
