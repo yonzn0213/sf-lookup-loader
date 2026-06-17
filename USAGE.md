@@ -51,9 +51,9 @@
 ```bash
 node dist/cli.js init --org dev -i data.csv
 ```
-→ 객체·작업 종류·각 CSV 헤더의 매핑(필드 / lookup / 건너뛰기)을 **목록에서 골라** job.json을 만듭니다.
+→ 객체·작업 종류·각 CSV 헤더의 매핑(필드 / lookup / 건너뛰기)·`onLookupMiss`(error/blank)를 **목록에서 골라** job.json을 만듭니다(update/upsert면 빈 셀 보존 여부도 질의).
 - 모든 선택지는 org에서 불러와 검증되므로 오타·없는 필드 선택이 불가능합니다.
-- lookup은 선택한 필드의 관계 대상이 자동 확정되고, 비교할 key 필드만 고르면 됩니다.
+- lookup은 선택한 필드의 관계 대상이 자동 확정되고(다형성이면 대상 선택), 비교할 key 필드만 고르면 됩니다.
 - 끝나면 **자동 dry-run**으로 "변환 N / 미매칭 K"를 보여줘 적재 전에 매핑을 검증합니다.
 
 ### 방법 B) 직접 작성
@@ -64,6 +64,7 @@ node dist/cli.js init --org dev -i data.csv
   "operation": "insert",          // insert | update | upsert
   "skipEmptyFields": false,       // true면 빈 셀은 안 보냄(update에서 기존 값 보존)
   "onLookupMiss": "error",        // lookup 매칭 실패 시: error(행 제외) | blank(공란)
+  "auditRequired": false,         // (선택) true면 감사 로그 기록 실패 시 적재를 실패로 신호(규제 환경)
   "mappings": {
     "이름":   "LastName",          // 단순 매핑: "CSV헤더": "SF필드"
     "이메일": "Email",
@@ -87,7 +88,9 @@ node dist/cli.js init --org dev -i data.csv
 ```bash
 node dist/cli.js check -c job.json
 ```
-점검 항목: 객체·필드 존재, lookup 필드가 관계 필드인지 + 대상(referenceTo) 일치, key 필드 존재, operation별 필수(update→Id, upsert→externalIdField), **FLS/권한**(생성/수정 불가 필드 경고). 에러가 있으면 0이 아닌 종료코드로 끝나 CI가 잡습니다.
+점검 항목: 객체·필드 존재, lookup 필드가 관계 필드인지 + 대상(referenceTo) 일치, key 필드 존재·비교 가능 타입, operation별 필수(update→Id, upsert→externalIdField), 중복 매핑·필수필드 누락·FLS 경고. 에러가 있으면 0이 아닌 종료코드로 끝나 CI가 잡습니다.
+
+> ⚠️ **FLS/권한 점검 범위**: 필드의 생성/수정 가능 여부만 경고합니다. **객체 CRUD·항목 권한·공유 규칙·검증 규칙·레이아웃 필수·RecordType 강제**는 메타데이터만으론 알 수 없어 검증하지 않으며, 이 경우 실제 `load` 단계에서 Bulk 에러로 드러납니다.
 
 ---
 
@@ -176,4 +179,23 @@ node dist/cli.js run -c job.json -i data.csv
 
 ---
 
-명령별 도움말은 터미널에서: `node dist/cli.js --help`, `node dist/cli.js prepare --help`
+## Exit Codes (CI 연동)
+
+| 코드 | 의미 |
+|------|------|
+| `0` | 성공(또는 경고만) |
+| `1` | 실패 — `check` 에러, `prepare` 미매칭(onLookupMiss=error), `load` 실패, 또는 `auditRequired=true`인데 감사 기록 실패 |
+
+CI에서는 `check`(쓰기 없음)로 프리플라이트 → 통과 시 `prepare`/`load`를 돌리는 식으로 종료코드를 게이트로 쓰면 됩니다.
+
+---
+
+## 보안 주의
+
+- 출력 파일(`*.resolved.csv` / `*.errors.csv` / `*.failed.csv` / `*.results.csv`, `sfload-audit.log`)에는 **SF 레코드 Id·업무 데이터·org 메타데이터**가 들어 있습니다. 파일 권한을 제한하고 작업 후 정리하세요(모두 `.gitignore` 처리됨).
+- 봇/세션 토큰은 도구가 저장하지 않으며 로그·출력에도 기록하지 않습니다.
+- 규제/감사 환경은 `job.json`에 `"auditRequired": true`를 두면 감사 로그 기록 실패 시 적재가 실패로 신호됩니다.
+
+---
+
+명령별 도움말은 터미널에서: `node dist/cli.js --help`, `node dist/cli.js prepare --help`, `node dist/cli.js check --help`

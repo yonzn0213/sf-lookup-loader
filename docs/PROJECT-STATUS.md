@@ -7,7 +7,7 @@
 ## 1. 현재 상태 한눈에
 
 - **무엇**: `sf-lookup-loader`(CLI 명령 `sfload`) — 엑셀/CSV → Salesforce insert/update/upsert. 핵심은 **lookup 필드의 업무 key → 실제 레코드 Id 자동 치환**.
-- **버전/품질**: v0.1.0, **vitest 65개 통과**, `tsc --noEmit` 클린, **런타임(prod) 의존성 취약점 0건**, `main` 최신.
+- **버전/품질**: v0.1.0, **vitest 72개 통과**, `tsc --noEmit` 클린, **런타임(prod) 의존성 취약점 0건**, `main` 최신.
 - **명령**: `init`(대화형 마법사) · `check`(사전점검) · `prepare`(매핑+치환) · `load`(Bulk 적재) · `run`(prepare+load).
 - **저장소**: https://github.com/yonzn0213/sf-lookup-loader (public, MIT).
 - **인증**: 로컬 `sf` CLI 세션 재사용(토큰 비저장).
@@ -15,7 +15,7 @@
 ### 이어가는 법 (다음 세션)
 ```bash
 cd C:/Users/pc/Downloads/sf-migrate   # 로컬 경로
-npm install && npm test               # 65 통과 확인
+npm install && npm test               # 72 통과 확인
 npm run build                         # dist 생성
 node dist/cli.js --help               # 명령 확인
 ```
@@ -68,7 +68,26 @@ node dist/cli.js --help               # 명령 확인
 | Minor(M4) | check의 describe 실패가 스택트레이스 노출 | **친절한 에러 메시지 + 종료코드** 처리 |
 | 확인 | check가 org에 쓰기 안 함 / 토큰 미기록 | 의도대로 동작 확인(수정 없음) |
 
-> 두 리뷰 모두 **"approve가 아니라 changes-requested"** 였고, Critical은 머지 전 전부 수정 후 테스트로 검증함.
+### 라운드 C — 정밀 검증(15차원·다수 에이전트, 2026-06-17)
+코드 전반을 15개 차원으로 검증→적대적 확인→종합. **총 104건 발견, 적대적 검증 통과 high 15건.** 즉시 수정(mustFix 8) + 고도화(enhance) 처리:
+| 처리 | 내용 |
+|------|------|
+| CLI 최상위 에러 경계 | `parseAsync().catch`로 스택트레이스 대신 메시지·종료코드 |
+| config 입력 검증 | 매핑 값이 배열/숫자/불완전 객체면 차단(`mappings['x'] 형식 오류`) |
+| loadJob 친절 에러 | 파일없음/JSON오류/스키마 실패를 경로 포함 메시지로 |
+| SOQL IN 문자수 청킹 | `chunkByBudget`(개수+~3800자) — 긴 key 500개 SOQL 초과 방지 |
+| init 중복헤더 | 마법사 진입 전 `assertUniqueHeaders` |
+| getConnection 진단 | ENOENT(미설치)/별칭/네트워크 구분 + 다음행동 안내 |
+| load unprocessed 가드 | `Array.isArray` — string일 때 문자수 오집계 방지 |
+| `auditRequired` 옵션 | 규제 환경: 감사 기록 실패를 적재 실패로 신호 |
+| check 강화 | key 타입(비교가능) 검증, 중복매핑·필수필드 경고 |
+| prepare 소스헤더 검증 | 매핑 소스 컬럼이 CSV에 없으면 조기 에러(헤더 오타 무음 미매칭 방지) |
+| wizard onLookupMiss | error/blank 선택 프롬프트 추가 |
+| load 통합 테스트 | bulk2 mock으로 성공/실패/unprocessed 경로 검증(72 tests) |
+
+> medium/큰 작업은 README의 **TODO/추후 과제**·**알려진 한계**로 이관(거버너 한도 자동분할, 필드 타입 정규화, org 특수구조 감지, 진행률/취소, GUI 등).
+
+> 세 리뷰/검증 모두 **"changes-requested"** 였고, Critical/high는 전부 수정 후 테스트로 검증함.
 
 ---
 

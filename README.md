@@ -10,7 +10,7 @@
 
 - **헤더 매핑**: 소스 헤더(예: `이름`)를 SF API 필드(`LastName`)로 자동 변환. 설정 파일로 재사용.
 - **lookup Id 자동 치환**: lookup 필드에 비즈니스 key를 주면, org에서 `SELECT Id ... WHERE key IN (...)`로 **일괄 조회**해 실제 레코드 Id로 치환. 엑셀 VLOOKUP 수작업 제거. key는 **앞뒤 공백·대소문자를 무시**하고 매칭(중간 공백은 보존).
-- **대용량 스트리밍**: `prepare`는 입력을 **2-pass 스트리밍**으로 처리해 행을 메모리에 쌓지 않음 — 메모리가 *행 수가 아니라 고유 key 수*에만 비례. 수십만 행도 무렉.
+- **대용량 스트리밍**: `prepare`는 입력을 **2-pass 스트리밍**으로 처리해 행을 메모리에 쌓지 않음 — 메모리가 행 수가 아니라 *lookup 필드 수 × 고유 key 수*에 비례. 수십만 행도 무렉.
 - **안전한 2단계**: `prepare`(매핑+치환, 적재 안 함)와 `load`(Bulk 적재)를 분리 — 적재 전에 결과·에러를 확인.
 - **검증 리포트**: 미매칭/중복 key를 `errors.csv`로, 적재 결과(행별 성공/실패)를 `results.csv`로, 건수 대조를 콘솔로.
 - **대화형 `init` 마법사**: org 필드를 **목록에서 선택**해 매핑 설정을 만들고(오타·미존재 필드 선택 불가), lookup 대상 객체는 자동 확정. 끝나면 **자동 dry-run**으로 검증.
@@ -27,7 +27,7 @@
 | 인증 | `sf org display --json` 재사용 → jsforce Connection |
 | CSV | csv-parse (스트림 파싱) / csv-stringify |
 | CLI | commander |
-| 테스트 | Vitest (65 tests, TDD) |
+| 테스트 | Vitest (72 tests, TDD) |
 
 ---
 
@@ -83,10 +83,11 @@ node dist/cli.js run -c job.json -i data.csv
 ```jsonc
 {
   "object": "Contact",            // 대상 SObject
-  "targetOrg": "dev",             // sf CLI 별칭(영문/숫자/._@- 만 허용)
+  "targetOrg": "dev",             // sf CLI 별칭/username (공백 OK, 셸 특수문자 ;&|<>()[]!*?~$ 등 제외)
   "operation": "upsert",          // "insert" | "update" | "upsert"
   "externalIdField": "Ext__c",    // upsert일 때 필수
   "skipEmptyFields": false,       // true면 빈 셀은 출력에서 제외(update 시 기존 값 null 덮어쓰기 방지)
+  "auditRequired": false,         // true면 감사 로그 기록 실패 시 적재를 실패로 신호(규제 환경)
   "onLookupMiss": "error",        // "error"(미매칭 행 제외+리포트) | "blank"(공란 두고 진행)
   "mappings": {
     "이름":   "LastName",          // 단순 매핑: 소스헤더 → API 필드
@@ -140,8 +141,8 @@ node dist/cli.js run -c job.json -i data.csv
 
 1. **`prepare`/`load` 분리** — 적재는 되돌리기 어렵다. 치환 결과와 미매칭 리포트를 먼저 확인한 뒤 적재하도록 단계를 분리했다. `prepare`만 써서 깨끗한 CSV를 뽑아 기존 Data Loader로 올리는 사용법도 1급 지원.
 2. **`sf` CLI 인증 재사용** — 비밀번호/토큰을 도구에 저장하지 않기 위해 `sf org display --json`으로 accessToken만 받아 jsforce에 연결. 멀티 org를 별칭으로 전환.
-3. **lookup 일괄 조회 + key 정규화** — key를 행마다 조회하지 않고 전부 모아 청크(기본 500개) `IN` 쿼리로 한 번에 → API 호출 최소화. 매칭 시 앞뒤 공백·대소문자를 무시해 사소한 차이로 인한 미매칭을 줄이고, 중복/미매칭은 별도 리포트.
-4. **보안** — org 별칭을 화이트리스트(`^[A-Za-z0-9._@-]+$`)로 검증해 셸 명령 인젝션 차단. SOQL 문자열 key는 따옴표·백슬래시·제어문자까지 이스케이프.
+3. **lookup 일괄 조회 + key 정규화** — key를 행마다 조회하지 않고 모아서 `IN` 쿼리로 조회. 청크는 **개수(기본 500) + SOQL 문자수(~3800자)** 둘 다로 분할해 긴 key에도 SOQL 길이 제한을 넘지 않음. 매칭 시 앞뒤 공백·대소문자 무시, 중복/미매칭은 별도 리포트.
+4. **보안** — org 별칭은 **셸 특수문자를 차단**(공백은 허용)하고 인용해 명령 인젝션을 막음. SOQL 문자열 key는 따옴표·백슬래시·제어문자까지 이스케이프. 토큰은 로그/출력에 기록하지 않음.
 5. **테스트 설계** — IO(jsforce/파일)와 순수 로직을 분리해, 매핑·치환·검증·설정·CSV 파싱을 순수 함수 단위 테스트로 커버(jsforce는 mock).
 
 ---
@@ -149,7 +150,7 @@ node dist/cli.js run -c job.json -i data.csv
 ## ✅ 테스트
 
 ```bash
-npm test          # vitest 65 tests
+npm test          # vitest 72 tests
 npx tsc --noEmit  # 타입 체크 (strict)
 ```
 커버리지: 설정 검증(빈값 옵션 포함), 헤더 매핑, lookup 치환(매칭/미매칭/중복/빈값/공백·대소문자), 청크 조회, SOQL 이스케이프(인젝션·제어문자), 별칭 검증, CSV(중복 헤더 에러·trim), prepare 파이프라인(임시 CSV + mock), Bulk 옵션·결과 집계, 매핑 자동 제안.
@@ -161,22 +162,29 @@ npx tsc --noEmit  # 타입 체크 (strict)
 > 🧭 **현황·결정 로그·리뷰 처리 내역·GUI 방향 분석**은 [`docs/PROJECT-STATUS.md`](docs/PROJECT-STATUS.md)에 정리되어 있습니다(이어서 작업할 때 먼저 보세요).
 
 ### 검증 (완료)
-- ✅ vitest **65개 전부 통과**, `tsc --noEmit` 무에러, `node dist/cli.js --help` 정상 구동.
+- ✅ vitest **72개 전부 통과**, `tsc --noEmit` 무에러, `node dist/cli.js --help` 정상 구동.
 - ✅ **대화형 `init` 마법사** — org 메타데이터 기반 목록 선택·검증, lookup 대상 자동 확정, 저장 후 자동 dry-run.
 - ✅ 런타임(prod) 의존성 취약점 **0건** (`npm audit --omit=dev`; form-data 취약점 패치 완료).
 - ✅ **실제 sandbox 종단 테스트 통과** — Account 부모/자식 생성 시 lookup key→ParentId 자동 치환·관계 형성 확인 후 테스트 레코드 정리(생성한 것만 삭제).
-- ✅ 코드 리뷰 후 보안/정확성 수정: 별칭 명령 인젝션 차단, SOQL 제어문자 이스케이프, 빈 lookup 값 스킵.
-- ✅ 추가 반영: `skipEmptyFields` 옵션, **중복 헤더 에러**, lookup key **앞뒤 공백·대소문자 정규화**, **공백 포함 org 별칭 지원**.
-- ✅ **prepare 2-pass 스트리밍** + **load 입력 스트리밍** — 입력 행을 메모리에 쌓지 않음(prepare 메모리 = 고유 key 수에 비례, load는 CSV 파일 스트림을 Bulk2에 직접 투입).
-- ✅ **부분 실패 복구** — 적재 실패 행을 재적재 가능한 `*.failed.csv`로 저장(고쳐서 다시 `load`). 반복 재시도엔 externalId 기반 **upsert(멱등)** 안내.
-- ✅ **audit log** — `load` 실행마다 시각·host·org·object·operation·성공/실패 건수를 `sfload-audit.log`(JSONL, append-only)에 기록.
-- ✅ **`check` 커맨드** — job.json을 org에 대해 **비대화형 사전 점검**(필드/관계/key 존재, referenceTo 일치, operation별 필수, **FLS/권한 경고**). 적재·쓰기 없음 → CI 프리플라이트.
-- ✅ **다중 lookup** — 한 job에서 서로 다른 객체를 가리키는 lookup 여러 개를 동시에 해소.
+- ✅ **prepare 2-pass 스트리밍** + **load 입력 스트리밍** — 입력 행을 메모리에 쌓지 않음(메모리 = lookup 필드 수 × 고유 key 수에 비례, load는 CSV 파일 스트림을 Bulk2에 직접 투입).
+- ✅ **부분 실패 복구**(`*.failed.csv` 재적재 + 멱등 upsert 안내), **audit log**(`sfload-audit.log` JSONL), **`check` 사전점검**, **다중 lookup**.
+- ✅ 여러 코드리뷰 + **정밀 검증(15차원·다수 에이전트)** 반영: CLI **최상위 에러 경계**(스택트레이스 대신 메시지), **config 입력 검증**(잘못된 매핑 차단), **SOQL IN 문자수 청킹**(긴 key 안전), `getConnection` **원인별 에러**, `load` **unprocessed 가드**, `check`의 **key타입·중복매핑·필수필드** 점검, `prepare` **소스헤더 검증**, `auditRequired` 옵션, 별칭 인젝션 차단·SOQL 이스케이프.
 
-### 남은 사항 (별도 결정 필요)
-- **GUI/웹 UI** — 비개발 어드민·BA 진입용. 별도 제품(웹앱·호스팅·사용자별 OAuth)이라 **별도 전략·결정 필요**. 평가도 CLI 포지셔닝 유지를 권고.
-- (성능, 선택) prepare 단일 패스(윈도우) 최적화 / load **결과** 스트리밍 — 현재도 입력 메모리 목표는 달성. 결과 배열 버퍼링이 문제될 초대용량에서만 고려.
-- 다객체 **체인** lookup(lookup의 key를 또 다른 lookup으로 해소) — 수요 시 검토(YAGNI).
+### 🚧 TODO / 추후 과제 (큰 작업·전략 결정)
+- `chunkSize`/IN 한도 환경설정 + org API 버전별 적응 청킹.
+- Bulk API 2.0 거버너 한도(잡당 1만 행 등) 인지 → 입력 자동 분할 전략.
+- 필드 타입 인식 데이터 정규화(날짜 ISO·boolean·통화 정밀도·picklist 유효값).
+- master-detail/RecordType/polymorphic/PersonAccount 등 org 특수 구조 사전 감지(check 강화).
+- Bulk2 진행률 표시 + 장기 작업 timeout/취소(Ctrl-C) 처리.
+- **GUI/웹 UI** — 비개발 어드민·BA 진입용. 별도 제품(웹앱·호스팅·사용자별 OAuth)이라 **별도 전략·결정 필요**(평가는 CLI 포지셔닝 유지 권고). 성능 윈도우 최적화·체인 lookup도 수요 시.
+
+### ⚠️ 알려진 한계
+- `check`의 FLS/권한 점검은 **필드 createable/updateable**(describe 반영값)만 본다. **객체 CRUD·항목 권한·공유 규칙·검증 규칙·레이아웃 필수·RecordType 강제**는 메타데이터만으론 감지 불가 → 그 경우 `load` 단계 Bulk 에러로 나타난다(조용한 실패 아님).
+- lookup key 정규화는 **trim + lowercase** — 대소문자·앞뒤 공백이 의미 있는 키에는 부적합.
+- `upsert`의 `results.csv`는 insert/update를 구분하지 않는다(Salesforce 모니터에서 확인).
+- `prepare`는 메모리 효율을 위해 입력을 **2회 읽는다**(2-pass).
+- Bulk2 `unprocessedRecords`(throttling/timeout 보류분)는 **자동 재시도 없음** → 재실행 필요.
+- **보안 주의**: 출력 파일(`*.resolved/errors/failed/results.csv`, `sfload-audit.log`)에는 SF 레코드 Id·업무 데이터·org 메타가 들어있다. 파일 권한 제한·작업 후 정리를 권장(모두 `.gitignore` 처리됨).
 
 ---
 
