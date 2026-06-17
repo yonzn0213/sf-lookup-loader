@@ -27,7 +27,7 @@
 | 인증 | `sf org display --json` 재사용 → jsforce Connection |
 | CSV | csv-parse (스트림 파싱) / csv-stringify |
 | CLI | commander |
-| 테스트 | Vitest (51 tests, TDD) |
+| 테스트 | Vitest (55 tests, TDD) |
 
 ---
 
@@ -149,7 +149,7 @@ node dist/cli.js run -c job.json -i data.csv
 ## ✅ 테스트
 
 ```bash
-npm test          # vitest 51 tests
+npm test          # vitest 55 tests
 npx tsc --noEmit  # 타입 체크 (strict)
 ```
 커버리지: 설정 검증(빈값 옵션 포함), 헤더 매핑, lookup 치환(매칭/미매칭/중복/빈값/공백·대소문자), 청크 조회, SOQL 이스케이프(인젝션·제어문자), 별칭 검증, CSV(중복 헤더 에러·trim), prepare 파이프라인(임시 CSV + mock), Bulk 옵션·결과 집계, 매핑 자동 제안.
@@ -159,17 +159,22 @@ npx tsc --noEmit  # 타입 체크 (strict)
 ## 📋 검증 결과 & 남은 사항
 
 ### 검증 (완료)
-- ✅ vitest **51개 전부 통과**, `tsc --noEmit` 무에러, `node dist/cli.js --help` 정상 구동.
+- ✅ vitest **55개 전부 통과**, `tsc --noEmit` 무에러, `node dist/cli.js --help` 정상 구동.
 - ✅ **대화형 `init` 마법사** — org 메타데이터 기반 목록 선택·검증, lookup 대상 자동 확정, 저장 후 자동 dry-run.
-- ✅ 런타임(prod) 의존성 취약점 0건 (`npm audit --omit=dev`).
+- ✅ 런타임(prod) 의존성 취약점 **0건** (`npm audit --omit=dev`; form-data 취약점 패치 완료).
 - ✅ **실제 sandbox 종단 테스트 통과** — Account 부모/자식 생성 시 lookup key→ParentId 자동 치환·관계 형성 확인 후 테스트 레코드 정리(생성한 것만 삭제).
 - ✅ 코드 리뷰 후 보안/정확성 수정: 별칭 명령 인젝션 차단, SOQL 제어문자 이스케이프, 빈 lookup 값 스킵.
 - ✅ 추가 반영: `skipEmptyFields` 옵션, **중복 헤더 에러**, lookup key **앞뒤 공백·대소문자 정규화**, **공백 포함 org 별칭 지원**.
-- ✅ **prepare 2-pass 스트리밍** — 입력 행을 메모리에 쌓지 않음(메모리 = 고유 key 수에 비례).
+- ✅ **prepare 2-pass 스트리밍** + **load 입력 스트리밍** — 입력 행을 메모리에 쌓지 않음(prepare 메모리 = 고유 key 수에 비례, load는 CSV 파일 스트림을 Bulk2에 직접 투입).
+- ✅ **부분 실패 복구** — 적재 실패 행을 재적재 가능한 `*.failed.csv`로 저장(고쳐서 다시 `load`). 반복 재시도엔 externalId 기반 **upsert(멱등)** 안내.
 
-### 남은 사항
-1. **load 단계 스트리밍** — `prepare`는 스트리밍이지만 `load`는 `resolved.csv`를 메모리로 읽어 Bulk2에 넘깁니다. 초대용량에선 `resolved.csv`를 스트림으로 Bulk2에 투입하도록 개선 여지(실 org 적재 재검증 필요).
-2. **prepare 단일 패스(윈도우) 최적화** — 현재 2-pass는 파일을 두 번 읽습니다. 파일을 한 번만 읽는 윈도우 방식은 추후 최적화 후보(현재도 메모리 목표는 달성).
+### 남은 사항 (24개 실무 페르소나 평가 기반 우선순위)
+1. **audit log** — 실행자·시각·org·행수·결과 기록(규제/금융/감사 환경 진입에 필요).
+2. **비대화형 `init`(`--headless`) + `job.json` 부분 수정** — CI/CD 자동화·반복 작업.
+3. **에러 진단 강화** — 미매칭 원본값 표기, FLS/검증규칙/권한 사전 점검(`doctor` 커맨드).
+4. **다중 lookup·다객체 체인** 지원.
+5. **GUI/웹 UI** — 비개발 어드민·BA 진입용(비용 큼, 별도 전략).
+6. (성능) prepare 단일 패스(윈도우) 최적화 / load 결과 스트리밍.
 
 ---
 

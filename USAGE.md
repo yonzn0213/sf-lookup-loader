@@ -109,9 +109,18 @@ node dist/cli.js load -c job.json -i data.resolved.csv
 ```
 결과:
 - `data.resolved.results.csv` — 행별 성공/실패와 사유.
+- **실패가 있으면 `data.resolved.failed.csv`** — 실패한 행만 **재적재 가능한 형태**(원본 필드만)로 저장됩니다.
 - 콘솔에 `입력 N / 성공 S / 실패 F` 와 건수 대조.
 
+**부분 실패 복구**: 일부만 실패하면 → `failed.csv`의 행을 고친 뒤 **그 파일로 다시 `load`** 하면 됩니다.
+```bash
+node dist/cli.js load -c job.json -i data.resolved.failed.csv
+```
+> ⚠️ **멱등성**: `insert`로 재적재하면 이미 성공한 행과 별개로 **중복 생성**될 수 있습니다(failed.csv엔 실패 행만 있으니 보통 안전하지만). 반복 재시도가 잦은 작업은 **externalId 기반 `upsert`** 를 쓰면 같은 데이터를 여러 번 돌려도 안전합니다(멱등).
+
 > `resolved.csv`를 우리 도구로 적재하지 않고 **기존 Data Loader로 올려도** 됩니다(이미 Id가 채워진 파일이라).
+
+> 입력 CSV는 메모리에 통째로 올리지 않고 **스트림으로 Bulk2에 투입**되어 대용량도 안정적입니다.
 
 ### prepare + load 한 번에
 ```bash

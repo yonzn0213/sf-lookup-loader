@@ -1,6 +1,17 @@
 import { describe, it, expect } from "vitest";
-import { buildBulkOptions, summarizeResults } from "../src/load";
+import { buildBulkOptions, summarizeResults, stripResultMeta } from "../src/load";
 import type { Job } from "../src/types";
+
+describe("stripResultMeta", () => {
+  it("sf__ 메타 컬럼 제거, 원본 필드만 문자열로(재적재용)", () => {
+    expect(stripResultMeta({ sf__Id: "1", sf__Error: "REQUIRED", LastName: "홍", AccountId: "001" }))
+      .toEqual({ LastName: "홍", AccountId: "001" });
+  });
+  it("null/undefined 값은 빈 문자열", () => {
+    expect(stripResultMeta({ sf__Error: "X", Name: null, Code: undefined }))
+      .toEqual({ Name: "", Code: "" });
+  });
+});
 
 const insertJob: Job = { object: "Contact", targetOrg: "dev", operation: "insert", mappings: { a: "B" }, onLookupMiss: "error" };
 const upsertJob: Job = { ...insertJob, operation: "upsert", externalIdField: "Ext__c" };
