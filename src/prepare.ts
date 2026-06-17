@@ -6,7 +6,7 @@ import type { Job, IdMap } from "./types.js";
 import { parseMappings, applySimple } from "./mapping.js";
 import { queryKeys, buildIdMap, resolveRow } from "./lookup.js";
 import { summarize } from "./report.js";
-import { streamCsvRows } from "./csv.js";
+import { streamCsvRows, readHeader } from "./csv.js";
 
 // 2-pass 스트리밍: 입력 행을 메모리에 쌓지 않는다.
 //  1패스 — lookup key만 수집 → org 일괄 조회로 key→Id 맵 구성
@@ -17,20 +17,21 @@ export async function prepare(conn: Connection, job: Job, inputPath: string): Pr
 }> {
   const { simple, lookups } = parseMappings(job.mappings);
 
-  // ── 1패스: 고유 key 수집 + 매핑 소스 헤더 존재 검증 ──
+  // ── 매핑 소스 헤더 존재 검증(데이터 0행이어도 수행) ──
+  // 매핑에 정의된 소스 헤더가 CSV에 없으면(오타 등) 조용히 빈 값 처리되어 원인을 숨김 → 조기 차단.
+  const sourceHeaders = [...Object.keys(simple), ...lookups.map((l) => l.src)];
+  const header = readHeader(inputPath);
+  if (header.length > 0) {
+    const present = new Set(header);
+    const missing = sourceHeaders.filter((h) => !present.has(h));
+    if (missing.length > 0)
+      throw new Error(`매핑에 지정된 CSV 컬럼이 없습니다: ${missing.join(", ")} (CSV 헤더: ${header.join(", ")})`);
+  }
+
+  // ── 1패스: 고유 key 수집 ──
   const keySets: Record<string, Set<string>> = {};
   for (const lk of lookups) keySets[lk.field] = new Set();
-  const sourceHeaders = [...Object.keys(simple), ...lookups.map((l) => l.src)];
-  let headerChecked = false;
   for await (const row of streamCsvRows(inputPath)) {
-    if (!headerChecked) {
-      // 매핑에 정의된 소스 헤더가 CSV에 없으면(오타 등) 조용히 빈 값 처리되어 원인을 숨김 → 조기 차단.
-      const present = new Set(Object.keys(row));
-      const missing = sourceHeaders.filter((h) => !present.has(h));
-      if (missing.length > 0)
-        throw new Error(`매핑에 지정된 CSV 컬럼이 없습니다: ${missing.join(", ")} (CSV 헤더: ${[...present].join(", ")})`);
-      headerChecked = true;
-    }
     for (const lk of lookups) {
       const v = (row[lk.src] ?? "").trim();
       if (v) keySets[lk.field].add(v);

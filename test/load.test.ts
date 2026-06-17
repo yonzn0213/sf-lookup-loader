@@ -14,11 +14,21 @@ describe("load (통합, bulk2 mock)", () => {
     writeFileSync(inputF, "LastName\nA\nB\n", "utf8");
     const conn = {
       bulk2: {
-        loadAndWaitForResults: async () => ({
-          successfulResults: [{ sf__Id: "001" }],
-          failedResults: [{ sf__Error: "REQUIRED_FIELD", LastName: "B" }],
-          unprocessedRecords: "0", // string — Array.isArray 가드로 0건 처리(문자수 오집계 방지)
-        }),
+        // 실제 bulk2처럼 입력 스트림을 끝까지 소비(미처리 stream 에러 방지).
+        loadAndWaitForResults: async (o: any) => {
+          await new Promise<void>((resolve) => {
+            const s = o?.input;
+            if (!s || typeof s.on !== "function") return resolve();
+            s.on("data", () => {});
+            s.on("end", () => resolve());
+            s.on("error", () => resolve());
+          });
+          return {
+            successfulResults: [{ sf__Id: "001" }],
+            failedResults: [{ sf__Error: "REQUIRED_FIELD", LastName: "B" }],
+            unprocessedRecords: "0", // string — Array.isArray 가드로 0건 처리(문자수 오집계 방지)
+          };
+        },
       },
     } as any;
     const job: Job = { object: "Contact", targetOrg: "dev", operation: "insert", onLookupMiss: "error", mappings: { a: "LastName" } };
