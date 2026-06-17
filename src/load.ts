@@ -2,6 +2,7 @@ import { createReadStream } from "node:fs";
 import type { Connection } from "jsforce";
 import type { Job } from "./types.js";
 import { writeRows, summarize } from "./report.js";
+import { appendAudit, buildAuditEntry } from "./audit.js";
 
 export function buildBulkOptions(job: Job): Record<string, string> {
   const opts: Record<string, string> = { object: job.object, operation: job.operation };
@@ -65,6 +66,12 @@ export async function load(conn: Connection, job: Job, inputPath: string): Promi
     성공: summary.success,
     실패: summary.fail,
   });
+
+  // 감사 로그(append-only): 누가·언제·무엇을·결과
+  appendAudit("sfload-audit.log", buildAuditEntry(
+    { org: job.targetOrg, object: job.object, operation: job.operation, input: inputPath, success: summary.success, fail: summary.fail },
+    new Date(),
+  ));
   if (failed.length > 0) {
     console.warn(`실패 ${failed.length}건 → ${failedPath} 에 재적재용으로 저장됨. 원인은 ${resultsPath}에서 확인하고, 고친 뒤 'load'로 재시도하세요.`);
     if (job.operation === "insert") {

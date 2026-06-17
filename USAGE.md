@@ -81,6 +81,16 @@ node dist/cli.js init --org dev -i data.csv
 
 ---
 
+## 2.5 사전 점검 — `check` (선택, CI 권장)
+
+작성한 job.json이 org와 맞는지 **적재 없이** 미리 검사합니다(비대화형 → CI 파이프라인에 넣기 좋음).
+```bash
+node dist/cli.js check -c job.json
+```
+점검 항목: 객체·필드 존재, lookup 필드가 관계 필드인지 + 대상(referenceTo) 일치, key 필드 존재, operation별 필수(update→Id, upsert→externalIdField), **FLS/권한**(생성/수정 불가 필드 경고). 에러가 있으면 0이 아닌 종료코드로 끝나 CI가 잡습니다.
+
+---
+
 ## 3. 변환 — `prepare` (적재하지 않음, 안전)
 
 ```bash
@@ -121,6 +131,8 @@ node dist/cli.js load -c job.json -i data.resolved.failed.csv
 > `resolved.csv`를 우리 도구로 적재하지 않고 **기존 Data Loader로 올려도** 됩니다(이미 Id가 채워진 파일이라).
 
 > 입력 CSV는 메모리에 통째로 올리지 않고 **스트림으로 Bulk2에 투입**되어 대용량도 안정적입니다.
+
+> 🧾 **감사 로그**: `load` 실행마다 `sfload-audit.log`(JSONL)에 시각·host·org·object·operation·성공/실패 건수가 한 줄씩 append됩니다.
 
 ### prepare + load 한 번에
 ```bash

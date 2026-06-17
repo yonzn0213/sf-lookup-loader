@@ -7,6 +7,8 @@ import { getConnection } from "./auth.js";
 import { prepare } from "./prepare.js";
 import { load } from "./load.js";
 import { runWizard } from "./wizard.js";
+import { describeFields, type FieldInfo } from "./describe.js";
+import { checkJob } from "./check.js";
 
 const program = new Command();
 program.name("sfload").description("Salesforce 데이터 삽입 마이그레이션 CLI (헤더 매핑 · lookup Id 자동 치환 · 검증)");
@@ -74,6 +76,27 @@ program.command("run")
     }
     const r = await load(conn, job, p.resolvedPath);
     if (r.fail > 0) process.exitCode = 1;
+  });
+
+program.command("check")
+  .description("job.json을 org에 대해 사전 점검(필드·관계·권한, 적재/쓰기 없음 — CI 프리플라이트)")
+  .requiredOption("-c, --config <job.json>", "매핑 설정 파일")
+  .action(async (opts) => {
+    const job = loadJob(opts.config);
+    const conn = await getConnection(job.targetOrg);
+    const objectFields = await describeFields(conn, job.object);
+    const targets: Record<string, FieldInfo[]> = {};
+    for (const m of Object.values(job.mappings)) {
+      if (typeof m !== "string" && !targets[m.lookup.object]) {
+        targets[m.lookup.object] = await describeFields(conn, m.lookup.object);
+      }
+    }
+    const issues = checkJob(job, objectFields, targets);
+    if (issues.length === 0) { console.log("✅ 점검 통과: 문제 없음."); return; }
+    for (const i of issues) console.log(`${i.level === "error" ? "❌" : "⚠️"} ${i.message}`);
+    const errors = issues.filter((i) => i.level === "error").length;
+    console.log(`\n점검 결과: 에러 ${errors} / 경고 ${issues.length - errors}`);
+    if (errors > 0) process.exitCode = 1;
   });
 
 async function firstHeader(path: string): Promise<string[]> {

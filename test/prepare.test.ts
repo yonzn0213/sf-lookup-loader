@@ -37,6 +37,31 @@ describe("prepare", () => {
     expect(errors).toContain("미매칭");
   });
 
+  it("한 job에서 여러 lookup을 각각 다른 객체로 동시 해소", async () => {
+    const conn = {
+      query: async (soql: string) => {
+        if (soql.includes("FROM Account")) return { records: [{ Id: "001A", AKey__c: "a1" }] };
+        if (soql.includes("FROM Product__c")) return { records: [{ Id: "01tP", PKey__c: "p1" }] };
+        return { records: [] };
+      },
+    } as any;
+    const job2: Job = {
+      object: "Order", targetOrg: "dev", operation: "insert", onLookupMiss: "error",
+      mappings: {
+        "거래처키": { field: "AccountId", lookup: { object: "Account", key: "AKey__c" } },
+        "상품키": { field: "Product__c", lookup: { object: "Product__c", key: "PKey__c" } },
+      },
+    };
+    writeFileSync(input, "거래처키,상품키\na1,p1\n", "utf8");
+    const res = await prepare(conn, job2, input);
+    created.push(res.resolvedPath, res.errorsPath);
+    const resolved = readFileSync(res.resolvedPath, "utf8");
+    expect(resolved).toContain("AccountId,Product__c");
+    expect(resolved).toContain("001A,01tP");
+    expect(res.resolvedCount).toBe(1);
+    expect(res.errorCount).toBe(0);
+  });
+
   it("여러 행 스트리밍: 빈 lookup은 통과(AccountId 공란), 대소문자/공백 무시 매칭", async () => {
     writeFileSync(input, "이름,거래처키\n행1, ALPHA \n행2,\n행3,none\n", "utf8");
     const res = await prepare(fakeConn, job, input);

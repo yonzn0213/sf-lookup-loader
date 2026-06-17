@@ -3,4 +3,6 @@ dist/
 *.resolved.csv
 *.errors.csv
 *.results.csv
+*.failed.csv
+*.log
 .DS_Store
