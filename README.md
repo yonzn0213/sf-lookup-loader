@@ -158,6 +158,8 @@ npx tsc --noEmit  # 타입 체크 (strict)
 
 ## 📋 검증 결과 & 남은 사항
 
+> 🧭 **현황·결정 로그·리뷰 처리 내역·GUI 방향 분석**은 [`docs/PROJECT-STATUS.md`](docs/PROJECT-STATUS.md)에 정리되어 있습니다(이어서 작업할 때 먼저 보세요).
+
 ### 검증 (완료)
 - ✅ vitest **65개 전부 통과**, `tsc --noEmit` 무에러, `node dist/cli.js --help` 정상 구동.
 - ✅ **대화형 `init` 마법사** — org 메타데이터 기반 목록 선택·검증, lookup 대상 자동 확정, 저장 후 자동 dry-run.
