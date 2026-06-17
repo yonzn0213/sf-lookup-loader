@@ -84,12 +84,19 @@ program.command("check")
   .action(async (opts) => {
     const job = loadJob(opts.config);
     const conn = await getConnection(job.targetOrg);
-    const objectFields = await describeFields(conn, job.object);
+    let objectFields: FieldInfo[];
     const targets: Record<string, FieldInfo[]> = {};
-    for (const m of Object.values(job.mappings)) {
-      if (typeof m !== "string" && !targets[m.lookup.object]) {
-        targets[m.lookup.object] = await describeFields(conn, m.lookup.object);
+    try {
+      objectFields = await describeFields(conn, job.object);
+      for (const m of Object.values(job.mappings)) {
+        if (typeof m !== "string" && !targets[m.lookup.object]) {
+          targets[m.lookup.object] = await describeFields(conn, m.lookup.object);
+        }
       }
+    } catch (e) {
+      console.error(`org 메타데이터 조회 실패: ${e instanceof Error ? e.message : e}. 객체명/권한을 확인하세요.`);
+      process.exitCode = 1;
+      return;
     }
     const issues = checkJob(job, objectFields, targets);
     if (issues.length === 0) { console.log("✅ 점검 통과: 문제 없음."); return; }

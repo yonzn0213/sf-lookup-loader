@@ -54,4 +54,15 @@ describe("checkJob", () => {
     const issues = checkJob(job, fields, {});
     expect(issues.some((i) => i.level === "warn" && i.message.includes("LastName"))).toBe(true);
   });
+  it("같은 필드에 두 컬럼 매핑되면 warn(덮어쓰기)", () => {
+    const job = { ...base, mappings: { "a": "LastName", "b": "LastName" } };
+    const issues = checkJob(job, contactFields, {});
+    expect(issues.some((i) => i.level === "warn" && i.message.includes("덮어쓰기"))).toBe(true);
+  });
+  it("insert 시스템 필수 필드 미매핑이면 warn", () => {
+    const fields = [field({ name: "LastName", nillable: false }), field({ name: "Email" })];
+    const job: Job = { object: "Contact", targetOrg: "dev", operation: "insert", onLookupMiss: "error", mappings: { "이메일": "Email" } };
+    const issues = checkJob(job, fields, {});
+    expect(issues.some((i) => i.level === "warn" && i.message.includes("LastName"))).toBe(true);
+  });
 });

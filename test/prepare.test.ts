@@ -37,11 +37,12 @@ describe("prepare", () => {
     expect(errors).toContain("미매칭");
   });
 
-  it("한 job에서 여러 lookup을 각각 다른 객체로 동시 해소", async () => {
+  it("여러 lookup 동시 해소 — 같은 key 값이라도 객체별 맵이 섞이지 않음(교차오염 방지)", async () => {
+    // 두 객체가 동일한 key 문자열 "x1"을 갖지만 서로 다른 Id를 반환 → 각 컬럼은 자기 객체의 Id를 받아야 함
     const conn = {
       query: async (soql: string) => {
-        if (soql.includes("FROM Account")) return { records: [{ Id: "001A", AKey__c: "a1" }] };
-        if (soql.includes("FROM Product__c")) return { records: [{ Id: "01tP", PKey__c: "p1" }] };
+        if (soql.includes("FROM Account")) return { records: [{ Id: "001A", AKey__c: "x1" }] };
+        if (soql.includes("FROM Product__c")) return { records: [{ Id: "01tP", PKey__c: "x1" }] };
         return { records: [] };
       },
     } as any;
@@ -52,12 +53,12 @@ describe("prepare", () => {
         "상품키": { field: "Product__c", lookup: { object: "Product__c", key: "PKey__c" } },
       },
     };
-    writeFileSync(input, "거래처키,상품키\na1,p1\n", "utf8");
+    writeFileSync(input, "거래처키,상품키\nx1,x1\n", "utf8");
     const res = await prepare(conn, job2, input);
     created.push(res.resolvedPath, res.errorsPath);
     const resolved = readFileSync(res.resolvedPath, "utf8");
     expect(resolved).toContain("AccountId,Product__c");
-    expect(resolved).toContain("001A,01tP");
+    expect(resolved).toContain("001A,01tP"); // AccountId=001A(Account), Product__c=01tP(Product__c) — 섞이지 않음
     expect(res.resolvedCount).toBe(1);
     expect(res.errorCount).toBe(0);
   });

@@ -1,6 +1,7 @@
 import type { Job } from "./types.js";
 import type { FieldInfo } from "./describe.js";
 import { parseMappings } from "./mapping.js";
+import { requiredFieldsMissing } from "./init-logic.js";
 
 export interface CheckIssue { level: "error" | "warn"; message: string; }
 
@@ -40,10 +41,27 @@ export function checkJob(
       issues.push({ level: "error", message: `'${lk.object}'에 key 필드 없음: '${lk.key}'` });
   }
 
-  // 작업별 필수 조건
   const mappedTargets = [...Object.values(simple), ...lookups.map((l) => l.field)];
+
+  // 같은 필드에 여러 컬럼이 매핑되면 적재 시 조용히 덮어써짐(흔한 편집 실수)
+  const seen = new Set<string>();
+  for (const t of mappedTargets) {
+    if (seen.has(t)) issues.push({ level: "warn", message: `같은 필드에 여러 컬럼이 매핑됨(덮어쓰기 위험): '${t}'` });
+    else seen.add(t);
+  }
+
+  // insert: 시스템 필수 필드(생성가능·non-nillable·기본값없음)가 매핑에 없으면 적재가 통째로 실패
+  if (job.operation === "insert") {
+    for (const f of requiredFieldsMissing(objectFields, mappedTargets)) {
+      issues.push({ level: "warn", message: `필수 입력 필드 미매핑(시스템 필수): '${f.name}'` });
+    }
+  }
+
+  // 작업별 필수 조건
   if (job.operation === "update" && !mappedTargets.includes("Id"))
     issues.push({ level: "error", message: "update에는 Id로 매핑되는 컬럼이 필요합니다." });
+  if (job.operation === "update" && lookups.some((l) => l.field === "Id"))
+    issues.push({ level: "warn", message: "Id가 lookup 매핑이라 미매칭 행은 update에서 누락됩니다(check로는 못 잡음 — prepare의 errors.csv 확인)." });
   if (job.operation === "upsert") {
     if (!job.externalIdField) {
       issues.push({ level: "error", message: "upsert에는 externalIdField가 필요합니다." });

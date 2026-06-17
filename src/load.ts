@@ -67,11 +67,15 @@ export async function load(conn: Connection, job: Job, inputPath: string): Promi
     실패: summary.fail,
   });
 
-  // 감사 로그(append-only): 누가·언제·무엇을·결과
-  appendAudit("sfload-audit.log", buildAuditEntry(
-    { org: job.targetOrg, object: job.object, operation: job.operation, input: inputPath, success: summary.success, fail: summary.fail },
-    new Date(),
-  ));
+  // 감사 로그(append-only): 누가·언제·무엇을·결과. best-effort — 기록 실패가 적재 결과를 뒤집지 않음.
+  try {
+    appendAudit("sfload-audit.log", buildAuditEntry(
+      { org: job.targetOrg, object: job.object, operation: job.operation, input: inputPath, success: summary.success, fail: summary.fail },
+      new Date(),
+    ));
+  } catch (e) {
+    console.warn(`감사 로그 기록 실패(적재 결과에는 영향 없음): ${e instanceof Error ? e.message : e}`);
+  }
   if (failed.length > 0) {
     console.warn(`실패 ${failed.length}건 → ${failedPath} 에 재적재용으로 저장됨. 원인은 ${resultsPath}에서 확인하고, 고친 뒤 'load'로 재시도하세요.`);
     if (job.operation === "insert") {

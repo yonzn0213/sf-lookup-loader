@@ -27,7 +27,7 @@
 | 인증 | `sf org display --json` 재사용 → jsforce Connection |
 | CSV | csv-parse (스트림 파싱) / csv-stringify |
 | CLI | commander |
-| 테스트 | Vitest (63 tests, TDD) |
+| 테스트 | Vitest (65 tests, TDD) |
 
 ---
 
@@ -149,7 +149,7 @@ node dist/cli.js run -c job.json -i data.csv
 ## ✅ 테스트
 
 ```bash
-npm test          # vitest 63 tests
+npm test          # vitest 65 tests
 npx tsc --noEmit  # 타입 체크 (strict)
 ```
 커버리지: 설정 검증(빈값 옵션 포함), 헤더 매핑, lookup 치환(매칭/미매칭/중복/빈값/공백·대소문자), 청크 조회, SOQL 이스케이프(인젝션·제어문자), 별칭 검증, CSV(중복 헤더 에러·trim), prepare 파이프라인(임시 CSV + mock), Bulk 옵션·결과 집계, 매핑 자동 제안.
@@ -159,7 +159,7 @@ npx tsc --noEmit  # 타입 체크 (strict)
 ## 📋 검증 결과 & 남은 사항
 
 ### 검증 (완료)
-- ✅ vitest **63개 전부 통과**, `tsc --noEmit` 무에러, `node dist/cli.js --help` 정상 구동.
+- ✅ vitest **65개 전부 통과**, `tsc --noEmit` 무에러, `node dist/cli.js --help` 정상 구동.
 - ✅ **대화형 `init` 마법사** — org 메타데이터 기반 목록 선택·검증, lookup 대상 자동 확정, 저장 후 자동 dry-run.
 - ✅ 런타임(prod) 의존성 취약점 **0건** (`npm audit --omit=dev`; form-data 취약점 패치 완료).
 - ✅ **실제 sandbox 종단 테스트 통과** — Account 부모/자식 생성 시 lookup key→ParentId 자동 치환·관계 형성 확인 후 테스트 레코드 정리(생성한 것만 삭제).
