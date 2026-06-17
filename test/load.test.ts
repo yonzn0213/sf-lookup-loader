@@ -1,6 +1,36 @@
-import { describe, it, expect } from "vitest";
-import { buildBulkOptions, summarizeResults, stripResultMeta } from "../src/load";
+import { describe, it, expect, afterEach } from "vitest";
+import { writeFileSync, rmSync, readFileSync, existsSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { buildBulkOptions, summarizeResults, stripResultMeta, load } from "../src/load";
 import type { Job } from "../src/types";
+
+describe("load (통합, bulk2 mock)", () => {
+  const inputF = join(tmpdir(), "sfload_load_in.csv");
+  const cleanup = [inputF, join(tmpdir(), "sfload_load_in.results.csv"), join(tmpdir(), "sfload_load_in.failed.csv"), "sfload-audit.log"];
+  afterEach(() => { for (const f of cleanup) if (existsSync(f)) rmSync(f); });
+
+  it("성공/실패 집계 + failed.csv 생성 + unprocessed가 string이어도 안전", async () => {
+    writeFileSync(inputF, "LastName\nA\nB\n", "utf8");
+    const conn = {
+      bulk2: {
+        loadAndWaitForResults: async () => ({
+          successfulResults: [{ sf__Id: "001" }],
+          failedResults: [{ sf__Error: "REQUIRED_FIELD", LastName: "B" }],
+          unprocessedRecords: "0", // string — Array.isArray 가드로 0건 처리(문자수 오집계 방지)
+        }),
+      },
+    } as any;
+    const job: Job = { object: "Contact", targetOrg: "dev", operation: "insert", onLookupMiss: "error", mappings: { a: "LastName" } };
+    const r = await load(conn, job, inputF);
+    expect(r.success).toBe(1);
+    expect(r.fail).toBe(1);
+    expect(r.failedPath).toBeTruthy();
+    const failed = readFileSync(r.failedPath!, "utf8");
+    expect(failed).toContain("LastName");
+    expect(failed).toContain("B");
+  });
+});
 
 describe("stripResultMeta", () => {
   it("sf__ 메타 컬럼 제거, 원본 필드만 문자열로(재적재용)", () => {

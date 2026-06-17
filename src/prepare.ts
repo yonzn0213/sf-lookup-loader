@@ -17,10 +17,20 @@ export async function prepare(conn: Connection, job: Job, inputPath: string): Pr
 }> {
   const { simple, lookups } = parseMappings(job.mappings);
 
-  // ── 1패스: 고유 key 수집 ──
+  // ── 1패스: 고유 key 수집 + 매핑 소스 헤더 존재 검증 ──
   const keySets: Record<string, Set<string>> = {};
   for (const lk of lookups) keySets[lk.field] = new Set();
+  const sourceHeaders = [...Object.keys(simple), ...lookups.map((l) => l.src)];
+  let headerChecked = false;
   for await (const row of streamCsvRows(inputPath)) {
+    if (!headerChecked) {
+      // 매핑에 정의된 소스 헤더가 CSV에 없으면(오타 등) 조용히 빈 값 처리되어 원인을 숨김 → 조기 차단.
+      const present = new Set(Object.keys(row));
+      const missing = sourceHeaders.filter((h) => !present.has(h));
+      if (missing.length > 0)
+        throw new Error(`매핑에 지정된 CSV 컬럼이 없습니다: ${missing.join(", ")} (CSV 헤더: ${[...present].join(", ")})`);
+      headerChecked = true;
+    }
     for (const lk of lookups) {
       const v = (row[lk.src] ?? "").trim();
       if (v) keySets[lk.field].add(v);

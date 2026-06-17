@@ -1,8 +1,34 @@
 import type { ParsedMappings, IdMap, RowError } from "./types.js";
 
+// SOQL IN 비교에 안전한 key 필드 타입(텍스트형·숫자형·날짜·id). textarea/base64/encrypted 등 제외.
+export const COMPARABLE_KEY_TYPES = new Set([
+  "string", "email", "phone", "url", "picklist", "double", "int",
+  "currency", "percent", "date", "datetime", "id",
+]);
+
 export function chunk<T>(arr: T[], size: number): T[][] {
   const out: T[][] = [];
   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+
+// 개수(maxCount)와 SOQL IN 절 문자수(maxChars) 둘 다 만족하도록 분할.
+// 긴 key가 많아도 SOQL이 Salesforce 길이 제한을 넘지 않게 한다.
+export function chunkByBudget(values: string[], maxCount: number, maxChars: number): string[][] {
+  const out: string[][] = [];
+  let cur: string[] = [];
+  let curChars = 0;
+  for (const v of values) {
+    const cost = v.length + 4; // 'v', 따옴표·콤마 여유
+    if (cur.length > 0 && (cur.length >= maxCount || curChars + cost > maxChars)) {
+      out.push(cur);
+      cur = [];
+      curChars = 0;
+    }
+    cur.push(v);
+    curChars += cost;
+  }
+  if (cur.length > 0) out.push(cur);
   return out;
 }
 
@@ -70,7 +96,8 @@ export async function queryKeys(
   const out: Array<Record<string, any>> = [];
   // 정규화 기준 중복 제거(앞뒤 공백·대소문자 무시). 조회는 trim된 대표값으로.
   const uniq = [...new Map(keys.map((k) => [normalizeKey(k), k.trim()])).values()].filter((k) => k !== "");
-  for (const part of chunk(uniq, chunkSize)) {
+  // 개수(chunkSize) + SOQL IN 문자수(안전마진) 둘 다로 분할 → 긴 key에도 SOQL 길이 초과 방지.
+  for (const part of chunkByBudget(uniq, chunkSize, 3800)) {
     const inList = part.map((k) => `'${soqlEscape(k)}'`).join(",");
     const soql = `SELECT Id, ${keyField} FROM ${object} WHERE ${keyField} IN (${inList})`;
     const res = await conn.query(soql);

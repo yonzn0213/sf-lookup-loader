@@ -9,6 +9,7 @@ import { load } from "./load.js";
 import { runWizard } from "./wizard.js";
 import { describeFields, type FieldInfo } from "./describe.js";
 import { checkJob } from "./check.js";
+import { assertUniqueHeaders } from "./csv.js";
 
 const program = new Command();
 program.name("sfload").description("Salesforce 데이터 삽입 마이그레이션 CLI (헤더 매핑 · lookup Id 자동 치환 · 검증)");
@@ -32,6 +33,7 @@ program.command("init")
     const conn = await getConnection(opts.org);
     const headers = await firstHeader(opts.input);
     if (headers.length === 0) throw new Error("CSV 헤더를 읽지 못했습니다.");
+    assertUniqueHeaders(headers); // 중복 헤더는 마법사 진입 전에 차단(조용한 데이터 손실 방지)
     const job = await runWizard(conn, headers, opts.org);
     writeFileSync(opts.out, JSON.stringify(job, null, 2) + "\n", "utf8");
     console.log(`\n✅ ${opts.out} 생성. dry-run으로 매핑을 검증합니다...\n`);
@@ -112,4 +114,8 @@ async function firstHeader(path: string): Promise<string[]> {
   return [];
 }
 
-program.parseAsync();
+program.parseAsync().catch((err) => {
+  // 모든 핸들러 예외의 최종 경계: 스택트레이스 대신 사람이 읽는 메시지 + 비정상 종료코드.
+  console.error(`실패: ${err instanceof Error ? err.message : err}`);
+  process.exitCode = 1;
+});

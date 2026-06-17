@@ -44,9 +44,10 @@ export async function load(conn: Connection, job: Job, inputPath: string): Promi
     ...buildBulkOptions(job),
     input: createReadStream(inputPath),
   });
-  const successful = res.successfulResults ?? [];
-  const failed = res.failedResults ?? [];
-  const unprocessed = res.unprocessedRecords ?? [];
+  const successful = Array.isArray(res.successfulResults) ? res.successfulResults : [];
+  const failed = Array.isArray(res.failedResults) ? res.failedResults : [];
+  // unprocessedRecords는 jsforce 타입상 배열 또는 string일 수 있음 → 배열일 때만 건수로 셈(문자수 오집계 방지).
+  const unprocessed = Array.isArray(res.unprocessedRecords) ? res.unprocessedRecords : [];
 
   const summary = summarizeResults(successful, failed);
   const base = inputPath.replace(/\.csv$/i, "");
@@ -74,7 +75,10 @@ export async function load(conn: Connection, job: Job, inputPath: string): Promi
       new Date(),
     ));
   } catch (e) {
-    console.warn(`감사 로그 기록 실패(적재 결과에는 영향 없음): ${e instanceof Error ? e.message : e}`);
+    const msg = `감사 로그 기록 실패: ${e instanceof Error ? e.message : e}`;
+    // 규제 환경(auditRequired)에서는 감사 누락을 실패로 신호. 적재 자체는 이미 완료됨.
+    if (job.auditRequired) throw new Error(`${msg} (auditRequired=true — 적재는 됐으나 감사 미기록)`);
+    console.warn(`${msg} (적재 결과에는 영향 없음)`);
   }
   if (failed.length > 0) {
     console.warn(`실패 ${failed.length}건 → ${failedPath} 에 재적재용으로 저장됨. 원인은 ${resultsPath}에서 확인하고, 고친 뒤 'load'로 재시도하세요.`);

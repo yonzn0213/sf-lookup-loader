@@ -10,6 +10,7 @@ export interface Job {
   mappings: Record<string, Mapping>;
   onLookupMiss: "error" | "blank";
   skipEmptyFields?: boolean;   // true면 빈 셀(공백 포함)은 출력에서 제외 — update 시 기존 값 null 덮어쓰기 방지
+  auditRequired?: boolean;     // true면 감사 로그 기록 실패 시 적재를 실패로 신호(규제 환경). 기본 false(best-effort)
 }
 export interface ParsedMappings {
   simple: Record<string, string>;

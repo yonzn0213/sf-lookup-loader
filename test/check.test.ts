@@ -65,4 +65,10 @@ describe("checkJob", () => {
     const issues = checkJob(job, fields, {});
     expect(issues.some((i) => i.level === "warn" && i.message.includes("LastName"))).toBe(true);
   });
+  it("lookup key 필드가 비교 불가 타입이면 warn", () => {
+    const acc = [field({ name: "Notes__c", type: "textarea" })];
+    const job = { ...base, mappings: { "거래처키": { field: "AccountId", lookup: { object: "Account", key: "Notes__c" } } } };
+    const issues = checkJob(job, contactFields, { Account: acc });
+    expect(issues.some((i) => i.level === "warn" && i.message.includes("Notes__c"))).toBe(true);
+  });
 });

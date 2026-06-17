@@ -1,5 +1,16 @@
 import { describe, it, expect, vi } from "vitest";
-import { chunk, soqlEscape, buildIdMap, resolveRow, queryKeys, normalizeKey } from "../src/lookup";
+import { chunk, soqlEscape, buildIdMap, resolveRow, queryKeys, normalizeKey, chunkByBudget } from "../src/lookup";
+
+describe("chunkByBudget", () => {
+  it("개수 한도로 분할", () => {
+    expect(chunkByBudget(["a", "b", "c"], 2, 1000)).toEqual([["a", "b"], ["c"]]);
+  });
+  it("SOQL 문자수 한도로 분할(긴 key)", () => {
+    const long = "x".repeat(50);
+    const r = chunkByBudget([long, long, long], 100, 60);
+    expect(r.length).toBe(3); // 각 ~54자라 한 청크에 하나씩
+  });
+});
 
 describe("normalizeKey", () => {
   it("앞뒤 공백 제거 + 소문자, 중간 공백 보존", () => {

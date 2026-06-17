@@ -36,11 +36,13 @@ describe("runWizard", () => {
       "insert",             // operation
       "field", "LastName",  // 헤더 "성"
       "lookup", "AccountId", "Ext__c", // 헤더 "거래처키" (Account는 단일 referenceTo)
+      "error",              // onLookupMiss 선택
       true,                 // 요약 confirm
     );
     const job = await runWizard(fakeConn, ["성", "거래처키"], "dev");
     expect(job.object).toBe("Contact");
     expect(job.operation).toBe("insert");
+    expect(job.onLookupMiss).toBe("error");
     expect(job.mappings["성"]).toBe("LastName");
     expect(job.mappings["거래처키"]).toEqual({ field: "AccountId", lookup: { object: "Account", key: "Ext__c" } });
   });
@@ -52,6 +54,7 @@ describe("runWizard", () => {
       "field", "Id",        // 헤더 "Id열" → Id (update에서 선택 가능해야 함 — C1)
       "field", "LastName",  // 헤더 "성"
       true,                 // skipEmptyFields confirm
+      "error",              // onLookupMiss 선택
       true,                 // 요약 confirm
     );
     const job = await runWizard(fakeConn, ["Id열", "성"], "dev");
@@ -69,6 +72,7 @@ describe("runWizard", () => {
       "DeveloperName",      // key 선택(비고유)
       true,                 // 비고유 key 그대로 사용 confirm (I2)
       "field", "LastName",  // 헤더 "성"
+      "error",              // onLookupMiss 선택
       true,                 // 요약 confirm
     );
     const job = await runWizard(fakeConn, ["담당키", "성"], "dev");

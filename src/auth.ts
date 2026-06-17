@@ -27,8 +27,15 @@ export async function getConnection(alias: string): Promise<Connection> {
   try {
     // 별칭은 검증을 통과한 안전한 값이며, 공백 대응을 위해 큰따옴표로 감싼다.
     ({ stdout } = await pexec(`sf org display --target-org "${alias}" --json`));
-  } catch {
-    throw new Error(`sf CLI 실행 실패: '${alias}'가 로그인돼 있는지(\`sf org list\`) 확인하세요.`);
+  } catch (e: any) {
+    if (e?.code === "ENOENT")
+      throw new Error("Salesforce CLI(`sf`)를 찾을 수 없습니다. 설치/PATH를 확인하세요(`sf --version`).");
+    const stderr = typeof e?.stderr === "string" ? e.stderr.trim().split("\n")[0] : "";
+    throw new Error(
+      `sf org 접속 실패('${alias}'). 다음을 확인하세요: ` +
+      "① `sf org list`로 별칭 존재 ② `sf org login web --alias <별칭>`로 재로그인 ③ 네트워크." +
+      (stderr ? `\n원인: ${stderr}` : ""),
+    );
   }
   const { accessToken, instanceUrl } = parseOrgDisplay(stdout);
   return new Connection({ accessToken, instanceUrl });

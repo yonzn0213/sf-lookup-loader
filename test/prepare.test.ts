@@ -37,6 +37,11 @@ describe("prepare", () => {
     expect(errors).toContain("미매칭");
   });
 
+  it("매핑 소스 컬럼이 CSV에 없으면 에러로 조기 차단", async () => {
+    writeFileSync(input, "엉뚱한헤더\n값\n", "utf8");
+    await expect(prepare(fakeConn, job, input)).rejects.toThrow(/없습니다/);
+  });
+
   it("여러 lookup 동시 해소 — 같은 key 값이라도 객체별 맵이 섞이지 않음(교차오염 방지)", async () => {
     // 두 객체가 동일한 key 문자열 "x1"을 갖지만 서로 다른 Id를 반환 → 각 컬럼은 자기 객체의 Id를 받아야 함
     const conn = {

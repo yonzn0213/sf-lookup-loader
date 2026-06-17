@@ -2,6 +2,7 @@ import type { Job } from "./types.js";
 import type { FieldInfo } from "./describe.js";
 import { parseMappings } from "./mapping.js";
 import { requiredFieldsMissing } from "./init-logic.js";
+import { COMPARABLE_KEY_TYPES } from "./lookup.js";
 
 export interface CheckIssue { level: "error" | "warn"; message: string; }
 
@@ -37,8 +38,14 @@ export function checkJob(
       issues.push({ level: "error", message: `'${lk.field}'는 '${lk.object}'를 가리키지 않음(referenceTo: ${f.referenceTo.join(", ") || "없음"})` });
     }
     const tf = lookupTargetFields[lk.object];
-    if (tf && !tf.some((x) => x.name === lk.key))
-      issues.push({ level: "error", message: `'${lk.object}'에 key 필드 없음: '${lk.key}'` });
+    if (tf) {
+      const kf = tf.find((x) => x.name === lk.key);
+      if (!kf) {
+        issues.push({ level: "error", message: `'${lk.object}'에 key 필드 없음: '${lk.key}'` });
+      } else if (!kf.externalId && !kf.idLookup && !COMPARABLE_KEY_TYPES.has(kf.type)) {
+        issues.push({ level: "warn", message: `key 필드 '${lk.object}.${lk.key}' 타입(${kf.type})은 SOQL 비교에 부적합할 수 있음(텍스트/숫자/날짜/외부ID 권장)` });
+      }
+    }
   }
 
   const mappedTargets = [...Object.values(simple), ...lookups.map((l) => l.field)];

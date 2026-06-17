@@ -2,6 +2,7 @@ import { search, select, confirm } from "@inquirer/prompts";
 import type { Connection } from "jsforce";
 import type { Job } from "./types.js";
 import { describeFields, listObjects } from "./describe.js";
+import { COMPARABLE_KEY_TYPES } from "./lookup.js";
 import {
   buildJob, mappedApiNames, requiredFieldsMissing, keyFieldRisk, summaryRows, type MappingChoice,
 } from "./init-logic.js";
@@ -9,12 +10,6 @@ import {
 function labelOf(f: { name: string; label: string }): string {
   return `${f.label} (${f.name})`;
 }
-
-// SOQL IN 비교에 안전한 key 필드 타입(텍스트형·숫자형·날짜·id). textarea/base64/encrypted 등은 제외.
-const COMPARABLE_KEY_TYPES = new Set([
-  "string", "email", "phone", "url", "picklist", "double", "int",
-  "currency", "percent", "date", "datetime", "id",
-]);
 
 export async function runWizard(conn: Connection, headers: string[], targetOrg: string): Promise<Job> {
   // 1. 대상 객체
@@ -149,10 +144,19 @@ export async function runWizard(conn: Connection, headers: string[], targetOrg: 
     });
   }
 
+  // lookup 미매칭 행 처리 방식
+  const onLookupMiss = await select<"error" | "blank">({
+    message: "lookup 매칭 실패 행을 어떻게 할까요?",
+    choices: [
+      { name: "error: 그 행을 제외하고 errors.csv에 기록(권장)", value: "error" },
+      { name: "blank: 관계를 비운 채 진행", value: "blank" },
+    ],
+  });
+
   // 5. 요약 + 확정
   console.table(summaryRows(choices));
   const proceed = await confirm({ message: "이 매핑으로 job.json을 생성할까요?", default: true });
   if (!proceed) throw new Error("사용자가 취소했습니다.");
 
-  return buildJob({ object, targetOrg, operation, externalIdField, onLookupMiss: "error", skipEmptyFields, choices });
+  return buildJob({ object, targetOrg, operation, externalIdField, onLookupMiss, skipEmptyFields, choices });
 }
